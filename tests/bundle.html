@@ -1,0 +1,2548 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>NEONHARBOR 3D — first-person open-world crime</title>
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #05060f; font-family: monospace, sans-serif; }
+  #game { position: fixed; inset: 0; width: 100%; height: 100%; display: block; cursor: crosshair; }
+  #status { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  /* HUD */
+  #hud { position: fixed; inset: 0; pointer-events: none; color: #e8ecf4; text-shadow: 0 1px 2px #000; z-index: 5; }
+  #crosshair { position: fixed; left: 50%; top: 50%; width: 18px; height: 18px; margin: -9px 0 0 -9px; z-index: 6; pointer-events: none; }
+  #crosshair::before, #crosshair::after { content: ''; position: absolute; background: rgba(255,255,255,0.9); box-shadow: 0 0 3px #000; }
+  #crosshair::before { left: 8px; top: 0; width: 2px; height: 18px; }
+  #crosshair::after { left: 0; top: 8px; width: 18px; height: 2px; }
+  .panel { position: absolute; background: rgba(5,8,18,0.62); border: 1px solid rgba(125,227,255,0.25); border-radius: 6px; padding: 8px 10px; }
+  #stats { left: 12px; top: 12px; min-width: 190px; }
+  #stats .bar { height: 10px; background: #222; border-radius: 3px; overflow: hidden; margin: 3px 0 6px; }
+  #health-fill { height: 100%; width: 100%; background: linear-gradient(90deg, #ff4f4f, #ff8a5e); }
+  #armor-fill { height: 100%; width: 0%; background: linear-gradient(90deg, #2f6fd0, #7de3ff); }
+  #stats .row { display: flex; justify-content: space-between; font-size: 13px; }
+  #right { right: 12px; top: 12px; text-align: right; }
+  #stars { font-size: 20px; letter-spacing: 2px; color: #ffb52e; }
+  #cash { font-size: 18px; color: #ffd75e; margin-top: 2px; }
+  #mission-box { left: 50%; top: 12px; transform: translateX(-50%); text-align: center; max-width: 46vw; }
+  #mission-label { font-size: 12px; color: #ffd75e; letter-spacing: 1px; }
+  #objective { font-size: 14px; margin-top: 3px; }
+  #ammo-box { right: 12px; bottom: 12px; text-align: right; }
+  #ammo { font-size: 26px; font-weight: bold; }
+  #weapon { font-size: 12px; color: #7de3ff; letter-spacing: 2px; }
+  #speed { font-size: 13px; color: #cfd6e4; margin-top: 2px; }
+  #minimap { position: absolute; left: 12px; bottom: 12px; border: 1px solid rgba(125,227,255,0.35); border-radius: 6px; background: rgba(5,8,18,0.7); }
+  #fps { position: absolute; right: 12px; bottom: 110px; font-size: 11px; color: #8a93a6; }
+  #hint { position: absolute; left: 50%; bottom: 12px; transform: translateX(-50%); font-size: 11px; color: #8a93a6; }
+  #interact { position: absolute; left: 50%; top: 58%; transform: translateX(-50%); font-size: 16px; color: #ffd75e; background: rgba(5,8,18,0.7); border: 1px solid #ffd75e; border-radius: 6px; padding: 6px 12px; display: none; }
+  #banner { position: absolute; left: 50%; top: 26%; transform: translateX(-50%); text-align: center; display: none; }
+  #banner-title { font-size: 30px; font-weight: bold; color: #7dff9a; letter-spacing: 3px; }
+  #banner-sub { font-size: 14px; color: #e8ecf4; margin-top: 4px; }
+  /* Screens */
+  .screen { position: fixed; inset: 0; display: none; align-items: center; justify-content: center; flex-direction: column; background: rgba(4,5,12,0.82); z-index: 20; color: #e8ecf4; text-align: center; }
+  .screen h1 { font-size: 44px; margin: 0 0 4px; color: #ff4fd8; text-shadow: 0 0 18px rgba(255,79,216,0.6); letter-spacing: 4px; }
+  .screen h2 { font-size: 15px; color: #7de3ff; font-weight: normal; margin: 0 0 18px; letter-spacing: 2px; }
+  .screen p { font-size: 13px; line-height: 1.7; color: #c9d2e4; max-width: 560px; margin: 0 0 18px; }
+  .screen button { pointer-events: auto; font-family: monospace; font-size: 15px; background: #ff4fd8; color: #120410; border: none; border-radius: 6px; padding: 11px 26px; margin: 4px; cursor: pointer; font-weight: bold; }
+  .screen button.alt { background: #22304a; color: #e8ecf4; }
+  .screen .keys { font-size: 12px; color: #8a93a6; margin-top: 14px; line-height: 1.8; }
+</style>
+</head>
+<body>
+<canvas id="game" aria-label="NEONHARBOR 3D: first-person open-world crime game"></canvas>
+<p id="status" role="status" aria-live="polite"></p>
+
+<div id="hud">
+  <div id="crosshair"></div>
+  <div class="panel" id="stats">
+    <div class="row"><span>HEALTH</span><span id="health-text">100</span></div>
+    <div class="bar"><div id="health-fill"></div></div>
+    <div class="row"><span>ARMOR</span><span id="armor-text">0</span></div>
+    <div class="bar"><div id="armor-fill"></div></div>
+  </div>
+  <div class="panel" id="right">
+    <div id="stars">☆☆☆☆☆</div>
+    <div id="cash">$0</div>
+  </div>
+  <div class="panel" id="mission-box">
+    <div id="mission-label">MISSION 1/5</div>
+    <div id="objective"></div>
+  </div>
+  <div class="panel" id="ammo-box">
+    <div id="ammo">12 / 48</div>
+    <div id="weapon">PISTOL</div>
+    <div id="speed"></div>
+  </div>
+  <canvas id="minimap" width="140" height="140"></canvas>
+  <div id="fps">— fps</div>
+  <div id="hint">WASD move · mouse look · click shoot · R reload · 1/2 weapons · E interact · Shift sprint · Space jump · M mute</div>
+  <div id="interact">[E] Steal the car</div>
+  <div id="banner"><div id="banner-title"></div><div id="banner-sub"></div></div>
+</div>
+
+<div class="screen" id="title">
+  <h1>NEONHARBOR 3D</h1>
+  <h2>FIRST-PERSON OPEN-WORLD CRIME · NEON HARBOR</h2>
+  <p>You are <b>Rook</b>, a driver-for-hire in Neon Harbor. Take jobs from the fixer at the
+  Lantern Bar, clear the alley, steal a sedan for the Chop Shop, survive the ambush,
+  and outrun the Harbor PD to the waterfront. Five story missions, a wanted system,
+  rival gangs and rain-soaked neon streets — all in first person.</p>
+  <div>
+    <button id="new-btn">NEW GAME</button>
+    <button id="continue-btn" class="alt">CONTINUE</button>
+    <button id="mute-btn" class="alt">SOUND: ON</button>
+  </div>
+  <div class="keys">WASD move · mouse look (click to lock) · click shoot · R reload · 1/2 weapons<br>
+  E interact / enter car · Shift sprint · Space jump · Esc pause · M mute</div>
+</div>
+
+<div class="screen" id="pause">
+  <h1>PAUSED</h1>
+  <h2>THE CITY WAITS</h2>
+  <div><button id="resume-btn">RESUME</button></div>
+</div>
+
+<div class="screen" id="dead">
+  <h1 style="color:#ff4040;text-shadow:0 0 18px rgba(255,64,64,0.6)">WASTED</h1>
+  <h2>THE HARBOR CLAIMS ANOTHER</h2>
+  <p id="dead-stats"></p>
+  <div><button id="restart-btn">TRY AGAIN</button></div>
+</div>
+
+<script>
+
+// ---- config.js ----
+// NEONHARBOR 3D — configuration. Pure data, no DOM: safe to import in Node tests.
+// A first-person open-world crime game in a neon harbor city. All tuning lives here.
+
+const CFG = {
+  // Map
+  MAP_W: 40,
+  MAP_H: 40,
+  MAP_SEED: 1337,
+  // Rendering
+  BUF_W: 480,
+  BUF_H: 270,
+  FOV_DEG: 66,
+  EYE_HEIGHT: 0.5,
+  // Player
+  WALK_SPEED: 3.4,
+  SPRINT_SPEED: 5.4,
+  PLAYER_RADIUS: 0.22,
+  PLAYER_HP: 100,
+  PLAYER_ARMOR_MAX: 100,
+  JUMP_VEL: 4.2,
+  GRAVITY: 11,
+  // Driving
+  CAR_ACCEL: 6.0,
+  CAR_MAX_SPEED: 9.5,
+  CAR_BRAKE: 10,
+  CAR_TURN: 1.9,
+  CAR_RADIUS: 0.34,
+  // Combat
+  PISTOL: { name: 'Pistol', damage: 34, mag: 12, reserve: 48, fireRate: 0.26, reload: 1.05, spread: 0.014, pellets: 1, range: 30 },
+  SHOTGUN: { name: 'Shotgun', damage: 13, mag: 6, reserve: 18, fireRate: 0.85, reload: 1.9, spread: 0.085, pellets: 6, range: 16 },
+  // Enemies
+  GANG: { hp: 60, speed: 1.7, damage: 9, cooldown: 1.5, range: 14, aggro: 12, score: 25 },
+  POLICE: { hp: 90, speed: 2.3, damage: 7, cooldown: 1.15, range: 16, aggro: 17, score: 50 },
+  ENEMY_RADIUS: 0.3,
+  // Wanted
+  WANTED_DECAY_S: 25,
+  WANTED_MAX: 5,
+  // Missions
+  MISSION_TIME_LIMIT: 90,
+};
+
+// Wall tile ids (map grid values). 0 = open street.
+const TILE = {
+  OPEN: 0,
+  BRICK: 1,
+  CONCRETE: 2,
+  NEON: 3,
+  GLASS: 4,
+  BAR: 5,
+  CHOP: 6,
+  BOUNDARY: 7,
+};
+
+// Floor tile ids (per-cell ground). Derived from the wall grid at generation.
+const FLOOR = { ROAD: 0, WALK: 1, PLAZA: 2 };
+
+// Mission definitions. marker = {x, y} street cell centre the player must reach.
+// type: 'goto' | 'kill' | 'drive' | 'waves' | 'timed'
+const MISSIONS = [
+  {
+    id: 1, type: 'goto', name: 'First Job',
+    brief: 'Meet the fixer at the Lantern Bar. Follow the yellow beacon.',
+    marker: { x: 10.5, y: 7.5 }, reward: 100,
+  },
+  {
+    id: 2, type: 'kill', name: 'Alley Heat',
+    brief: 'Clear the alley: take out 4 rival gang members.',
+    marker: { x: 14.5, y: 13.5 }, count: 4, reward: 150,
+  },
+  {
+    id: 3, type: 'drive', name: 'Hot Wheels',
+    brief: 'Steal the parked sedan (press E), then drive it to the Chop Shop.',
+    carAt: { x: 7.5, y: 20.5 }, marker: { x: 28.5, y: 25.5 }, reward: 300,
+  },
+  {
+    id: 4, type: 'waves', name: 'Ambush',
+    brief: 'Survive 3 waves at the plaza. Hold the line.',
+    marker: { x: 20.5, y: 19.5 }, waves: 3, reward: 400,
+  },
+  {
+    id: 5, type: 'timed', name: 'Harbor Getaway',
+    brief: 'The heat is on. Reach the harbor in 90 seconds — 4 stars and counting.',
+    marker: { x: 20.5, y: 37.5 }, timeLimit: 90, reward: 500,
+  },
+];
+
+const SAVE_KEY = 'neonharbor3d-save-v1';
+
+// Fixed pickup placements (street cells) — health, armor, ammo.
+const PICKUPS = [
+  { kind: 'health', x: 4.5, y: 13.5 }, { kind: 'health', x: 25.5, y: 7.5 },
+  { kind: 'health', x: 31.5, y: 31.5 }, { kind: 'health', x: 13.5, y: 31.5 },
+  { kind: 'armor', x: 7.5, y: 31.5 }, { kind: 'armor', x: 31.5, y: 13.5 },
+  { kind: 'armor', x: 19.5, y: 25.5 },
+  { kind: 'ammo', x: 13.5, y: 7.5 }, { kind: 'ammo', x: 25.5, y: 19.5 },
+  { kind: 'ammo', x: 7.5, y: 25.5 }, { kind: 'ammo', x: 31.5, y: 25.5 },
+  { kind: 'ammo', x: 19.5, y: 13.5 },
+];
+
+// Parked cars (decorative + the mission-3 car). The mission car is the first entry.
+const PARKED_CARS = [
+  { x: 7.5, y: 20.5, color: 'red', mission: true },
+  { x: 13.5, y: 25.5, color: 'blue' },
+  { x: 25.5, y: 13.5, color: 'taxi' },
+  { x: 31.5, y: 19.5, color: 'green' },
+  { x: 19.5, y: 7.5, color: 'purple' },
+  { x: 4.5, y: 25.5, color: 'blue' },
+];
+
+const PLAYER_START = { x: 1.5, y: 6.5, yaw: 0 };
+
+
+// ---- random.js ----
+// Seeded RNG (mulberry32) — deterministic map/enemy placement for tests and shots.
+function mulberry32(seed) {
+  let a = seed >>> 0;
+  return function () {
+    a |= 0; a = (a + 0x6d2b79f5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+function pick(rng, arr) {
+  return arr[Math.floor(rng() * arr.length)];
+}
+
+function range(rng, min, max) {
+  return min + rng() * (max - min);
+}
+
+function clamp(v, lo, hi) {
+  return v < lo ? lo : v > hi ? hi : v;
+}
+
+function lerp(a, b, t) {
+  return a + (b - a) * t;
+}
+
+// Angle helpers.
+function angleDiff(a, b) {
+  let d = (a - b) % (Math.PI * 2);
+  if (d > Math.PI) d -= Math.PI * 2;
+  if (d < -Math.PI) d += Math.PI * 2;
+  return d;
+}
+
+function dist2(ax, ay, bx, by) {
+  const dx = ax - bx, dy = ay - by;
+  return dx * dx + dy * dy;
+}
+
+
+// ---- map.js ----
+// City map generation, collision and line-of-sight. Pure: no DOM, Node-safe.
+// The city is a 40x40 grid. Roads run every 6 cells (2 cells wide); the blocks
+// between them are buildings. The outer ring is a boundary wall; the south rows
+// are the harbor plaza. Street cells are open; building cells are solid walls
+// with a texture id (1..7).
+
+
+function generateMap(seed) {
+  const rng = mulberry32(seed ?? CFG.MAP_SEED);
+  const W = CFG.MAP_W, H = CFG.MAP_H;
+  const grid = new Uint8Array(W * H);
+  const floor = new Uint8Array(W * H);
+
+  const at = (x, y) => grid[y * W + x];
+  const set = (x, y, v) => { grid[y * W + x] = v; };
+
+  // 1) Base layout: border wall, roads, buildings.
+  for (let y = 0; y < H; y++) {
+    for (let x = 0; x < W; x++) {
+      if (x === 0 || y === 0 || x === W - 1 || y === H - 1) { set(x, y, TILE.BOUNDARY); continue; }
+      const road = (x % 6 < 2) || (y % 6 < 2);
+      if (road) { set(x, y, TILE.OPEN); continue; }
+      // Building cell: pick a texture; taller blocks get neon/glass fronts.
+      const r = rng();
+      const tex = r < 0.42 ? TILE.BRICK : r < 0.68 ? TILE.CONCRETE : r < 0.86 ? TILE.NEON : TILE.GLASS;
+      set(x, y, tex);
+    }
+  }
+
+  // 2) Harbor plaza: open the south rows (y 36..38) as a waterfront plaza.
+  for (let y = 36; y <= 38; y++) {
+    for (let x = 1; x < W - 1; x++) set(x, y, TILE.OPEN);
+  }
+  // Harbor wall along the very south edge (the water side) stays boundary.
+
+  // 3) Special buildings: Lantern Bar (the block x 8..11, y 8..11) and Chop
+  // Shop (the block x 26..29, y 26..29). Their street-facing fronts are the
+  // road rows just north of them (y 7 and y 25) — where the mission markers sit.
+  const barBlock = { x0: 8, y0: 8, x1: 11, y1: 11 };
+  const chopBlock = { x0: 26, y0: 26, x1: 29, y1: 29 };
+  for (let y = barBlock.y0; y <= barBlock.y1; y++) {
+    for (let x = barBlock.x0; x <= barBlock.x1; x++) set(x, y, TILE.BAR);
+  }
+  for (let y = chopBlock.y0; y <= chopBlock.y1; y++) {
+    for (let x = chopBlock.x0; x <= chopBlock.x1; x++) set(x, y, TILE.CHOP);
+  }
+
+  // 4) Floor types: road cells are asphalt; open cells next to a building are
+  // sidewalk; the harbor plaza is plaza tile.
+  for (let y = 1; y < H - 1; y++) {
+    for (let x = 1; x < W - 1; x++) {
+      if (at(x, y) !== TILE.OPEN) continue;
+      if (y >= 36) { floor[y * W + x] = FLOOR.PLAZA; continue; }
+      let nearBuilding = false;
+      for (let dy = -1; dy <= 1 && !nearBuilding; dy++) {
+        for (let dx = -1; dx <= 1; dx++) {
+          if (at(x + dx, y + dy) > TILE.OPEN) { nearBuilding = true; break; }
+        }
+      }
+      floor[y * W + x] = nearBuilding ? FLOOR.WALK : FLOOR.ROAD;
+    }
+  }
+
+  // 5) A few rooftop AC / prop markers are purely visual (rendered as sprites);
+  // the map itself stays a clean wall grid so the raycaster stays fast.
+
+  return {
+    w: W, h: H, grid, floor, seed: seed ?? CFG.MAP_SEED,
+    playerStart: { ...PLAYER_START },
+    missions: MISSIONS.map((m) => ({ ...m })),
+    pickups: PICKUPS.map((p) => ({ ...p, taken: false })),
+    cars: PARKED_CARS.map((c) => ({ ...c, taken: false })),
+  };
+}
+
+function isWall(map, x, y) {
+  const ix = Math.floor(x), iy = Math.floor(y);
+  if (ix < 0 || iy < 0 || ix >= map.w || iy >= map.h) return true;
+  return map.grid[iy * map.w + ix] !== TILE.OPEN;
+}
+
+function tileAt(map, x, y) {
+  const ix = Math.floor(x), iy = Math.floor(y);
+  if (ix < 0 || iy < 0 || ix >= map.w || iy >= map.h) return TILE.BOUNDARY;
+  return map.grid[iy * map.w + ix];
+}
+
+function floorAt(map, x, y) {
+  const ix = Math.floor(x), iy = Math.floor(y);
+  if (ix < 0 || iy < 0 || ix >= map.w || iy >= map.h) return FLOOR.ROAD;
+  return map.floor[iy * map.w + ix];
+}
+
+// Circle-vs-grid collision: try to move (x,y) by (dx,dy) with radius r.
+// Slides along walls. Returns the new position.
+function moveCircle(map, x, y, dx, dy, r) {
+  let nx = x + dx;
+  if (!circleHits(map, nx, y, r)) x = nx;
+  let ny = y + dy;
+  if (!circleHits(map, x, ny, r)) y = ny;
+  return { x, y };
+}
+
+function circleHits(map, x, y, r) {
+  const x0 = Math.floor(x - r), x1 = Math.floor(x + r);
+  const y0 = Math.floor(y - r), y1 = Math.floor(y + r);
+  for (let iy = y0; iy <= y1; iy++) {
+    for (let ix = x0; ix <= x1; ix++) {
+      if (ix < 0 || iy < 0 || ix >= map.w || iy >= map.h) return true;
+      if (map.grid[iy * map.w + ix] === TILE.OPEN) continue;
+      // Closest point of the solid cell to the circle centre.
+      const cx = Math.max(ix, Math.min(x, ix + 1));
+      const cy = Math.max(iy, Math.min(y, iy + 1));
+      const ddx = x - cx, ddy = y - cy;
+      if (ddx * ddx + ddy * ddy < r * r) return true;
+    }
+  }
+  return false;
+}
+
+// Line of sight between two points (DDA over the grid). True if no wall blocks.
+function hasLOS(map, x0, y0, x1, y1) {
+  const dx = x1 - x0, dy = y1 - y0;
+  const dist = Math.hypot(dx, dy);
+  const steps = Math.ceil(dist * 4);
+  for (let i = 1; i < steps; i++) {
+    const t = i / steps;
+    if (isWall(map, x0 + dx * t, y0 + dy * t)) return false;
+  }
+  return true;
+}
+
+// BFS over open cells: is every mission marker + pickup reachable from start?
+function reachable(map) {
+  const W = map.w, H = map.h;
+  const seen = new Uint8Array(W * H);
+  const q = [[Math.floor(map.playerStart.x), Math.floor(map.playerStart.y)]];
+  seen[q[0][1] * W + q[0][0]] = 1;
+  while (q.length) {
+    const [cx, cy] = q.pop();
+    for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+      const nx = cx + dx, ny = cy + dy;
+      if (nx < 0 || ny < 0 || nx >= W || ny >= H) continue;
+      if (seen[ny * W + nx]) continue;
+      if (map.grid[ny * W + nx] !== TILE.OPEN) continue;
+      seen[ny * W + nx] = 1;
+      q.push([nx, ny]);
+    }
+  }
+  const points = [
+    ...map.missions.map((m) => m.marker),
+    ...map.pickups.map((p) => ({ x: p.x, y: p.y })),
+    ...map.cars.map((c) => ({ x: c.x, y: c.y })),
+  ];
+  return points.every((p) => seen[Math.floor(p.y) * W + Math.floor(p.x)] === 1);
+}
+
+
+// ---- raycast.js ----
+// Pure raycasting math (DDA) — no DOM, Node-safe. Used by the renderer and by
+// hitscan/LOS logic. Angles in radians; 0 = east (+x), positive = CCW (toward +y).
+
+
+// Cast one ray from (px,py) along `angle`. Returns the first wall hit:
+// {dist (perpendicular), side (0 = x-side, 1 = y-side), tex (tile id),
+//  mapX, mapY, wallX (0..1 position along the wall face), hitX, hitY}.
+function castRay(map, px, py, angle) {
+  const dirX = Math.cos(angle), dirY = Math.sin(angle);
+  let mapX = Math.floor(px), mapY = Math.floor(py);
+  const deltaX = dirX === 0 ? 1e30 : Math.abs(1 / dirX);
+  const deltaY = dirY === 0 ? 1e30 : Math.abs(1 / dirY);
+  let stepX, stepY, sideX, sideY;
+  if (dirX < 0) { stepX = -1; sideX = (px - mapX) * deltaX; }
+  else { stepX = 1; sideX = (mapX + 1 - px) * deltaX; }
+  if (dirY < 0) { stepY = -1; sideY = (py - mapY) * deltaY; }
+  else { stepY = 1; sideY = (mapY + 1 - py) * deltaY; }
+  let side = 0, tex = TILE.BOUNDARY, guard = 0;
+  for (;;) {
+    if (sideX < sideY) { sideX += deltaX; mapX += stepX; side = 0; }
+    else { sideY += deltaY; mapY += stepY; side = 1; }
+    if (mapX < 0 || mapY < 0 || mapX >= map.w || mapY >= map.h) {
+      tex = TILE.BOUNDARY;
+      break;
+    }
+    tex = map.grid[mapY * map.w + mapX];
+    if (tex !== TILE.OPEN) break;
+    if (++guard > 256) break;
+  }
+  let dist;
+  if (side === 0) dist = (mapX - px + (1 - stepX) / 2) / (dirX || 1e-30);
+  else dist = (mapY - py + (1 - stepY) / 2) / (dirY || 1e-30);
+  if (!Number.isFinite(dist) || dist < 0) dist = 0.001;
+  // Exact position along the wall face (for the texture column).
+  const wallX = side === 0 ? py + dist * dirY : px + dist * dirX;
+  const frac = wallX - Math.floor(wallX);
+  return { dist, side, tex, mapX, mapY, wallX: frac, hitX: px + dist * dirX, hitY: py + dist * dirY };
+}
+
+// Project a world point into screen space for a camera at (px,py) with yaw and
+// a camera plane (planeX, planeY). Returns {screenX (0..1 of width), depth}
+// or null when behind the camera.
+function projectPoint(px, py, yaw, planeX, planeY, sx, sy) {
+  const dirX = Math.cos(yaw), dirY = Math.sin(yaw);
+  const relX = sx - px, relY = sy - py;
+  const invDet = 1 / (planeX * dirY - dirX * planeY);
+  const transformX = invDet * (dirY * relX - dirX * relY);
+  const transformY = invDet * (-planeY * relX + planeX * relY);
+  if (transformY <= 0.05) return null;
+  return { screenX: 0.5 * (1 + transformX / transformY), depth: transformY };
+}
+
+// Camera plane for a given yaw and FOV (perpendicular to the view direction).
+function cameraPlane(yaw, fovRad) {
+  const t = Math.tan(fovRad / 2);
+  return { x: -Math.sin(yaw) * t, y: Math.cos(yaw) * t };
+}
+
+
+// ---- combat.js ----
+// Hitscan combat — pure logic, no DOM. A shot is a ray from the camera; the
+// nearest enemy whose angular width covers the ray (and is closer than the
+// wall behind it) takes damage. Returns a result object for feedback/sound.
+
+
+// Fire one pellet. `spread` is a random angular offset in radians (0 = dead on).
+// Returns {hit: bool, enemy?, damage?, wallDist}.
+function firePellet(world, angle, spread, damage) {
+  const p = world.player;
+  const a = angle + spread;
+  const wall = castRay(world.map, p.x, p.y, a);
+  let best = null, bestDist = wall.dist;
+  for (const e of world.enemies) {
+    if (e.hp <= 0) continue;
+    const dx = e.x - p.x, dy = e.y - p.y;
+    const d = Math.hypot(dx, dy);
+    if (d >= bestDist) continue;
+    const ang = Math.atan2(dy, dx);
+    const diff = Math.abs(angleDiff(ang, a));
+    // Angular half-width of the enemy at this distance (generous: body + margin).
+    const half = Math.atan2(0.34, d);
+    if (diff <= half) {
+      if (best === null || d < bestDist) { best = e; bestDist = d; }
+    }
+  }
+  if (best) {
+    damageEnemy(world, best, damage, 'player');
+    return { hit: true, enemy: best, damage, wallDist: wall.dist, dist: bestDist };
+  }
+  return { hit: false, wallDist: wall.dist, dist: wall.dist };
+}
+
+// Fire a full weapon shot (all pellets). Mutates ammo. Returns {hits, kills}.
+function fireWeapon(world, weaponKey) {
+  const p = world.player;
+  const w = CFG[weaponKey];
+  const slot = p.weapons[weaponKey];
+  if (slot.ammo <= 0 || p.reloadT > 0 || p.fireT > 0 || p.weapon !== weaponKey) {
+    return { hits: 0, kills: 0, fired: false };
+  }
+  slot.ammo -= 1;
+  p.fireT = w.fireRate;
+  p.muzzleT = 0.07;
+  let hits = 0, kills = 0;
+  for (let i = 0; i < w.pellets; i++) {
+    const spread = (world.rng() * 2 - 1) * w.spread;
+    const r = firePellet(world, p.yaw, spread, w.damage);
+    if (r.hit) {
+      hits += 1;
+      if (r.enemy.hp <= 0) kills += 1;
+    }
+  }
+  world.shotsFired += 1;
+  if (hits > 0) world.shotsHit += 1;
+  return { hits, kills, fired: true };
+}
+
+function startReload(world) {
+  const p = world.player;
+  const w = CFG[p.weapon];
+  const slot = p.weapons[p.weapon];
+  if (p.reloadT > 0 || slot.ammo >= w.mag || slot.reserve <= 0) return false;
+  p.reloadT = w.reload;
+  return true;
+}
+
+function finishReload(world) {
+  const p = world.player;
+  const w = CFG[p.weapon];
+  const slot = p.weapons[p.weapon];
+  const need = w.mag - slot.ammo;
+  const take = Math.min(need, slot.reserve);
+  slot.ammo += take;
+  slot.reserve -= take;
+}
+
+// Damage an enemy. Handles death: cash/ammo drops, wanted, mission kill counts.
+function damageEnemy(world, enemy, dmg, cause) {
+  if (enemy.hp <= 0) return;
+  enemy.hp -= dmg;
+  enemy.flashT = 0.12;
+  if (cause === 'player') enemy.aggro = true;
+  if (enemy.hp > 0) return;
+  enemy.hp = 0;
+  enemy.dead = true;
+  world.kills += 1;
+  const cash = enemy.type === 'police' ? 50 : 25;
+  world.cash += cash;
+  world.floaters.push({ x: enemy.x, y: enemy.y, text: `+$${cash}`, t: 1.2, color: '#ffd75e' });
+  if (enemy.type === 'police') addWanted(world, 1);
+  else addWanted(world, 0.5);
+  // Drops: 40% ammo, 20% health.
+  const roll = world.rng();
+  if (roll < 0.4) world.pickups.push({ kind: 'ammo', x: enemy.x, y: enemy.y, taken: false, drop: true });
+  else if (roll < 0.6) world.pickups.push({ kind: 'health', x: enemy.x, y: enemy.y, taken: false, drop: true });
+  if (world.mission && world.mission.type === 'kill' && enemy.type === 'gang') {
+    world.mission.kills = (world.mission.kills || 0) + 1;
+  }
+}
+
+function damagePlayer(world, dmg) {
+  const p = world.player;
+  if (p.hp <= 0 || world.state !== 'playing') return;
+  let rest = dmg;
+  if (p.armor > 0) {
+    const absorbed = Math.min(p.armor, rest * 0.5);
+    p.armor -= absorbed;
+    rest -= absorbed;
+  }
+  p.hp -= rest;
+  p.hurtT = 0.35;
+  if (p.hp <= 0) {
+    p.hp = 0;
+    world.state = 'dead';
+    world.deaths += 1;
+  }
+}
+
+function addWanted(world, amount) {
+  world.wanted = Math.min(CFG.WANTED_MAX, world.wanted + amount);
+  world.wantedFloat = world.wanted;
+  world.lastCrimeT = world.time;
+  if (world.wanted > world.bestWanted) world.bestWanted = world.wanted;
+}
+
+function wantedStars(world) {
+  return Math.floor(world.wanted + 1e-6);
+}
+
+// Enemy shoots at the player (hitscan with inaccuracy). Returns true if it hit.
+function enemyShoot(world, enemy) {
+  const p = world.player;
+  const d = Math.hypot(p.x - enemy.x, p.y - enemy.y);
+  const wall = castRay(world.map, enemy.x, enemy.y, Math.atan2(p.y - enemy.y, p.x - enemy.x));
+  if (wall.dist < d - 0.3) return false; // wall in the way
+  const spread = 0.06 + d * 0.004;
+  const roll = world.rng();
+  // Hit chance falls with distance; wanted level makes police slightly sharper.
+  const hitChance = Math.max(0.12, 0.55 - d * 0.02 - spread * 2);
+  if (roll < hitChance) {
+    const dmg = enemy.type === 'police' ? CFG.POLICE.damage : CFG.GANG.damage;
+    damagePlayer(world, dmg);
+    return true;
+  }
+  return false;
+}
+
+function distToPlayer(world, e) {
+  return Math.hypot(e.x - world.player.x, e.y - world.player.y);
+}
+
+function enemyInView(world, e) {
+  const p = world.player;
+  const ang = Math.atan2(e.y - p.y, e.x - p.x);
+  return Math.abs(angleDiff(ang, p.yaw)) < 0.6;
+}
+
+
+// ---- player.js ----
+// Player update — movement, collision, driving, weapon timers, pickups.
+// Pure logic: `input` is a plain object {f, b, l, r, sprint, jump, fire,
+// reload, interact, w1, w2} with booleans, plus {yawDelta} for mouse look.
+
+
+function createPlayer(map) {
+  const s = map.playerStart;
+  return {
+    x: s.x, y: s.y, yaw: s.yaw,
+    hp: CFG.PLAYER_HP, armor: 0,
+    weapon: 'PISTOL',
+    weapons: {
+      PISTOL: { ammo: CFG.PISTOL.mag, reserve: CFG.PISTOL.reserve },
+      SHOTGUN: { ammo: 0, reserve: 0, owned: false },
+    },
+    fireT: 0, reloadT: 0, muzzleT: 0, hurtT: 0,
+    driving: false, carSpeed: 0, carYaw: 0,
+    eyeH: 0, vy: 0, onGround: true,
+    bobT: 0, moving: false,
+  };
+}
+
+function updatePlayer(world, dt, input) {
+  const p = world.player;
+  if (p.hp <= 0) return;
+  p.fireT = Math.max(0, p.fireT - dt);
+  p.muzzleT = Math.max(0, p.muzzleT - dt);
+  p.hurtT = Math.max(0, p.hurtT - dt);
+  if (p.reloadT > 0) {
+    p.reloadT -= dt;
+    if (p.reloadT <= 0) { p.reloadT = 0; finishReload(world); }
+  }
+  if (input.yawDelta) p.yaw += input.yawDelta;
+
+  if (p.driving) updateDriving(world, dt, input);
+  else updateOnFoot(world, dt, input);
+
+  // Weapon switching / reload / fire.
+  if (input.w2 && p.weapons.SHOTGUN.owned && p.weapon !== 'SHOTGUN' && p.reloadT <= 0) {
+    p.weapon = 'SHOTGUN'; p.fireT = Math.max(p.fireT, 0.15);
+  }
+  if (input.w1 && p.weapon !== 'PISTOL' && p.reloadT <= 0) {
+    p.weapon = 'PISTOL'; p.fireT = Math.max(p.fireT, 0.15);
+  }
+  if (input.reload) startReload(world);
+  if (input.fire && p.fireT <= 0 && p.reloadT <= 0) {
+    const r = fireWeapon(world, p.weapon);
+    if (r.fired && world.onShot) world.onShot(p.weapon, r.hits);
+  }
+
+  // Pickups (on foot only; driving collects nothing).
+  if (!p.driving) {
+    for (const pk of world.pickups) {
+      if (pk.taken) continue;
+      const d2 = (pk.x - p.x) ** 2 + (pk.y - p.y) ** 2;
+      if (d2 < 0.55 * 0.55) collectPickup(world, pk);
+    }
+  }
+
+  // Jump / gravity (eye-height bob; no vertical collision in a raycaster).
+  if (!p.driving) {
+    if (input.jump && p.onGround) { p.vy = CFG.JUMP_VEL; p.onGround = false; }
+    if (!p.onGround) {
+      p.vy -= CFG.GRAVITY * dt;
+      p.eyeH += p.vy * dt;
+      if (p.eyeH <= 0) { p.eyeH = 0; p.vy = 0; p.onGround = true; }
+    }
+  }
+}
+
+function updateOnFoot(world, dt, input) {
+  const p = world.player;
+  let mx = 0, mz = 0;
+  if (input.f) mz += 1;
+  if (input.b) mz -= 1;
+  if (input.r) mx += 1;
+  if (input.l) mx -= 1;
+  const len = Math.hypot(mx, mz);
+  p.moving = len > 0;
+  if (len > 0) {
+    mx /= len; mz /= len;
+    const speed = input.sprint ? CFG.SPRINT_SPEED : CFG.WALK_SPEED;
+    const sin = Math.sin(p.yaw), cos = Math.cos(p.yaw);
+    const dx = (cos * mz - sin * mx) * speed * dt;
+    const dy = (sin * mz + cos * mx) * speed * dt;
+    const pos = moveCircle(world.map, p.x, p.y, dx, dy, CFG.PLAYER_RADIUS);
+    p.x = pos.x; p.y = pos.y;
+    p.bobT += dt * speed * 1.6;
+  }
+}
+
+function updateDriving(world, dt, input) {
+  const p = world.player;
+  // Steering follows the car heading; the camera yaw follows the car loosely
+  // (mouse can still look around, car keeps its own heading).
+  if (input.f) p.carSpeed += CFG.CAR_ACCEL * dt;
+  else if (input.b) p.carSpeed -= CFG.CAR_BRAKE * dt;
+  else p.carSpeed *= Math.max(0, 1 - 1.6 * dt);
+  p.carSpeed = clamp(p.carSpeed, -3.5, CFG.CAR_MAX_SPEED);
+  const steer = (input.l ? 1 : 0) - (input.r ? 1 : 0);
+  const turnRate = CFG.CAR_TURN * clamp(Math.abs(p.carSpeed) / 4, 0, 1) * Math.sign(p.carSpeed || 1);
+  p.carYaw += steer * turnRate * dt;
+  p.yaw = p.carYaw;
+  const dx = Math.cos(p.carYaw) * p.carSpeed * dt;
+  const dy = Math.sin(p.carYaw) * p.carSpeed * dt;
+  const pos = moveCircle(world.map, p.x, p.y, dx, dy, CFG.CAR_RADIUS);
+  // A wall hit at speed scrubs speed (crash feel without damage).
+  if (pos.x === p.x && Math.abs(dx) > 0.001) p.carSpeed *= 0.4;
+  if (pos.y === p.y && Math.abs(dy) > 0.001) p.carSpeed *= 0.4;
+  p.x = pos.x; p.y = pos.y;
+  p.moving = Math.abs(p.carSpeed) > 0.5;
+  if (p.moving) p.bobT += dt * Math.abs(p.carSpeed) * 1.2;
+}
+
+function enterCar(world, car) {
+  const p = world.player;
+  if (p.driving || car.taken) return false;
+  car.taken = true;
+  p.driving = true;
+  p.carSpeed = 0;
+  p.carYaw = p.yaw;
+  p.x = car.x; p.y = car.y;
+  return true;
+}
+
+function exitCar(world) {
+  const p = world.player;
+  if (!p.driving) return false;
+  p.driving = false;
+  p.carSpeed = 0;
+  // Leave the car where it stopped so it can be re-entered.
+  const car = world.drivenCar;
+  if (car) {
+    car.x = p.x; car.y = p.y;
+    car.taken = false;
+    world.drivenCar = null;
+  }
+  // Step out to the side of the car.
+  const sx = p.x - Math.sin(p.yaw) * 0.8, sy = p.y + Math.cos(p.yaw) * 0.8;
+  if (!world.map.grid[Math.floor(sy) * world.map.w + Math.floor(sx)]) { p.x = sx; p.y = sy; }
+  return true;
+}
+
+function collectPickup(world, pk) {
+  const p = world.player;
+  if (pk.kind === 'health') {
+    if (p.hp >= CFG.PLAYER_HP) return;
+    p.hp = Math.min(CFG.PLAYER_HP, p.hp + 30);
+  } else if (pk.kind === 'armor') {
+    if (p.armor >= CFG.PLAYER_ARMOR_MAX) return;
+    p.armor = Math.min(CFG.PLAYER_ARMOR_MAX, p.armor + 50);
+  } else if (pk.kind === 'ammo') {
+    p.weapons.PISTOL.reserve += 24;
+    if (p.weapons.SHOTGUN.owned) p.weapons.SHOTGUN.reserve += 12;
+    if (!p.weapons.SHOTGUN.owned) {
+      p.weapons.SHOTGUN.owned = true;
+      p.weapons.SHOTGUN.ammo = CFG.SHOTGUN.mag;
+      p.weapons.SHOTGUN.reserve = CFG.SHOTGUN.reserve;
+    }
+  }
+  pk.taken = true;
+  if (world.onPickup) world.onPickup(pk.kind);
+}
+
+
+// ---- enemies.js ----
+// Enemy AI, spawning and the wanted system. Pure logic, no DOM.
+// Gang members patrol alleys; police spawn at the map edge as wanted rises.
+// Enemies chase when they see the player, and shoot when in range with LOS.
+
+
+let nextId = 1;
+
+function spawnEnemy(world, type, x, y) {
+  const stats = type === 'police' ? CFG.POLICE : CFG.GANG;
+  const e = {
+    id: nextId++, type, x, y,
+    hp: stats.hp, maxHp: stats.hp,
+    yaw: world.rng() * Math.PI * 2,
+    speed: stats.speed * (0.9 + world.rng() * 0.2),
+    cooldown: 0.5 + world.rng(),
+    aggro: false, dead: false, flashT: 0,
+    patrolTx: x, patrolTy: y, patrolT: 0,
+    shootT: 0,
+  };
+  world.enemies.push(e);
+  return e;
+}
+
+// Spawn points: random open street cell at least `minDist` from the player.
+function randomStreetSpot(world, minDist) {
+  const map = world.map;
+  for (let tries = 0; tries < 40; tries++) {
+    const x = 1.5 + world.rng() * (map.w - 3);
+    const y = 1.5 + world.rng() * (map.h - 3);
+    if (isWall(map, x, y)) continue;
+    if (dist2(x, y, world.player.x, world.player.y) < minDist * minDist) continue;
+    return { x, y };
+  }
+  return { x: world.player.x + 6, y: world.player.y };
+}
+
+function updateEnemies(world, dt) {
+  const p = world.player;
+  // Separation: push overlapping enemies apart.
+  const list = world.enemies;
+  for (let i = 0; i < list.length; i++) {
+    const a = list[i];
+    if (a.dead) continue;
+    for (let j = i + 1; j < list.length; j++) {
+      const b = list[j];
+      if (b.dead) continue;
+      const dx = b.x - a.x, dy = b.y - a.y;
+      const d2 = dx * dx + dy * dy;
+      if (d2 < 0.6 * 0.6 && d2 > 1e-6) {
+        const d = Math.sqrt(d2), push = (0.6 - d) * 0.5;
+        const nx = dx / d, ny = dy / d;
+        const pa = moveCircle(world.map, a.x, a.y, -nx * push, -ny * push, CFG.ENEMY_RADIUS);
+        const pb = moveCircle(world.map, b.x, b.y, nx * push, ny * push, CFG.ENEMY_RADIUS);
+        a.x = pa.x; a.y = pa.y; b.x = pb.x; b.y = pb.y;
+      }
+    }
+  }
+
+  for (const e of list) {
+    if (e.dead) continue;
+    e.flashT = Math.max(0, e.flashT - dt);
+    e.cooldown -= dt;
+    const d = distToPlayer(world, e);
+    const stats = e.type === 'police' ? CFG.POLICE : CFG.GANG;
+    const sees = d < stats.aggro && hasLOS(world.map, e.x, e.y, p.x, p.y);
+    if (sees) e.aggro = true;
+    if (p.hp <= 0) e.aggro = false;
+
+    if (e.aggro && p.hp > 0) {
+      // Face the player.
+      const want = Math.atan2(p.y - e.y, p.x - e.x);
+      e.yaw += angleDiff(want, e.yaw) * Math.min(1, dt * 8);
+      if (d > 2.2) {
+        // Chase, sliding along walls.
+        const dx = Math.cos(e.yaw) * e.speed * dt;
+        const dy = Math.sin(e.yaw) * e.speed * dt;
+        const pos = moveCircle(world.map, e.x, e.y, dx, dy, CFG.ENEMY_RADIUS);
+        e.x = pos.x; e.y = pos.y;
+      }
+      // Shoot when in range with line of sight.
+      if (d < stats.range && e.cooldown <= 0) {
+        e.cooldown = stats.cooldown * (0.85 + world.rng() * 0.3);
+        e.shootT = 0.08;
+        const hit = enemyShoot(world, e);
+        if (world.onEnemyShot) world.onEnemyShot(e, hit);
+      }
+    } else {
+      // Patrol: drift to a nearby waypoint, then pick another.
+      e.patrolT -= dt;
+      const pdx = e.patrolTx - e.x, pdy = e.patrolTy - e.y;
+      const pd = Math.hypot(pdx, pdy);
+      if (pd < 0.4 || e.patrolT <= 0) {
+        const spot = randomStreetSpot(world, 8);
+        e.patrolTx = spot.x; e.patrolTy = spot.y;
+        e.patrolT = 6 + world.rng() * 4;
+      } else {
+        const want = Math.atan2(pdy, pdx);
+        e.yaw += angleDiff(want, e.yaw) * Math.min(1, dt * 4);
+        const dx = Math.cos(e.yaw) * e.speed * 0.4 * dt;
+        const dy = Math.sin(e.yaw) * e.speed * 0.4 * dt;
+        const pos = moveCircle(world.map, e.x, e.y, dx, dy, CFG.ENEMY_RADIUS);
+        e.x = pos.x; e.y = pos.y;
+      }
+    }
+    e.shootT = Math.max(0, (e.shootT || 0) - dt);
+  }
+
+  // Remove the dead (keep the count bounded; corpses fade in the renderer).
+  if (list.length > 40) {
+    world.enemies = list.filter((e) => !e.dead).concat(list.filter((e) => e.dead).slice(-6));
+  }
+}
+
+// Wanted upkeep: police spawn pressure + decay.
+function updateWanted(world, dt) {
+  const stars = wantedStars(world);
+  // Decay: one star per WANTED_DECAY_S without a crime and no police near.
+  if (world.time - world.lastCrimeT > 10 && stars > 0) {
+    world.wantedDecay = (world.wantedDecay || 0) + dt;
+    if (world.wantedDecay >= CFG.WANTED_DECAY_S) {
+      world.wantedDecay = 0;
+      world.wanted = Math.max(0, world.wanted - 1);
+    }
+  } else world.wantedDecay = 0;
+
+  // Police pressure: desired alive police = stars * 2 (cap 10), none at 0 stars
+  // unless a mission forces them (mission 5 sets wanted 4 directly).
+  const want = Math.min(10, stars * 2);
+  const alive = world.enemies.filter((e) => e.type === 'police' && !e.dead).length;
+  world.policeSpawnT = (world.policeSpawnT || 0) - dt;
+  if (alive < want && world.policeSpawnT <= 0) {
+    world.policeSpawnT = 2.5;
+    const spot = randomStreetSpot(world, 10);
+    spawnEnemy(world, 'police', spot.x, spot.y);
+  }
+
+  // Ambient gang: keep a few rivals roaming the streets.
+  const gangAlive = world.enemies.filter((e) => e.type === 'gang' && !e.dead).length;
+  world.gangSpawnT = (world.gangSpawnT || 0) - dt;
+  if (gangAlive < 4 && world.gangSpawnT <= 0) {
+    world.gangSpawnT = 5;
+    const spot = randomStreetSpot(world, 9);
+    spawnEnemy(world, 'gang', spot.x, spot.y);
+  }
+}
+
+function aliveEnemies(world, type) {
+  return world.enemies.filter((e) => !e.dead && (!type || e.type === type));
+}
+
+
+// ---- missions.js ----
+// Story missions — a sequential state machine. Pure logic, no DOM.
+// Each mission is cloned from CFG.MISSIONS with runtime fields added.
+
+
+// Find an open street cell near (x, y) (tries random offsets until one is open).
+function openSpotNear(world, x, y, radius) {
+  for (let i = 0; i < 24; i++) {
+    const sx = x + (world.rng() * 2 - 1) * radius;
+    const sy = y + (world.rng() * 2 - 1) * radius;
+    if (!isWall(world.map, sx, sy)) return { x: sx, y: sy };
+  }
+  return { x, y };
+}
+
+function startMission(world, index) {
+  const def = MISSIONS[index];
+  if (!def) { world.mission = null; world.freeRoam = true; return; }
+  const m = { ...def, kills: 0, wave: 0, waveSpawned: 0, timer: def.timeLimit || 0, phase: 1, done: false };
+  world.mission = m;
+  world.missionIndex = index;
+  if (m.type === 'kill') {
+    // Spawn the alley gang near the marker, on open street cells only.
+    for (let i = 0; i < m.count; i++) {
+      const spot = openSpotNear(world, m.marker.x, m.marker.y, 2);
+      const e = spawnEnemy(world, 'gang', spot.x, spot.y);
+      e.missionKill = true;
+    }
+  }
+  if (m.type === 'timed') {
+    world.wanted = 4;
+    world.lastCrimeT = world.time;
+    addWanted(world, 0); // refresh bestWanted
+  }
+  if (world.onMissionStart) world.onMissionStart(m);
+}
+
+function updateMissions(world, dt) {
+  const m = world.mission;
+  if (!m || m.done) return;
+  const p = world.player;
+
+  if (m.type === 'goto') {
+    if (Math.hypot(p.x - m.marker.x, p.y - m.marker.y) < 1.4) completeMission(world);
+  } else if (m.type === 'kill') {
+    if ((m.kills || 0) >= m.count) completeMission(world);
+  } else if (m.type === 'drive') {
+    if (m.phase === 2 && p.driving) {
+      if (Math.hypot(p.x - m.marker.x, p.y - m.marker.y) < 1.8) {
+        exitCar(world);
+        completeMission(world);
+      }
+    }
+  } else if (m.type === 'waves') {
+    const alive = aliveEnemies(world).filter((e) => e.missionWave === m.wave);
+    if (m.wave === 0) {
+      spawnWave(world, 1);
+    } else if (alive.length === 0 && m.waveSpawned > 0) {
+      if (m.wave >= m.waves) completeMission(world);
+      else spawnWave(world, m.wave + 1);
+    }
+  } else if (m.type === 'timed') {
+    m.timer -= dt;
+    if (Math.hypot(p.x - m.marker.x, p.y - m.marker.y) < 1.6) {
+      completeMission(world);
+    } else if (m.timer <= 0) {
+      // Failed run: restart the timer, keep the heat on.
+      world.missionFails = (world.missionFails || 0) + 1;
+      m.timer = m.timeLimit;
+      if (world.onMissionFail) world.onMissionFail(m);
+    }
+  }
+}
+
+function spawnWave(world, wave) {
+  const m = world.mission;
+  m.wave = wave;
+  m.waveSpawned = 0;
+  const gangCount = 2 + wave;
+  for (let i = 0; i < gangCount; i++) {
+    const spot = randomStreetSpot(world, 7);
+    const e = spawnEnemy(world, 'gang', spot.x, spot.y);
+    e.missionWave = wave;
+    m.waveSpawned += 1;
+  }
+  if (world.wanted >= 2) {
+    for (let i = 0; i < 2; i++) {
+      const spot = randomStreetSpot(world, 9);
+      const e = spawnEnemy(world, 'police', spot.x, spot.y);
+      e.missionWave = wave;
+      m.waveSpawned += 1;
+    }
+  }
+  if (world.onWave) world.onWave(wave);
+}
+
+function completeMission(world) {
+  const m = world.mission;
+  if (!m || m.done) return;
+  m.done = true;
+  world.cash += m.reward;
+  world.missionsDone = (world.missionsDone || 0) + 1;
+  world.floaters.push({ x: world.player.x, y: world.player.y, text: `MISSION COMPLETE  +$${m.reward}`, t: 2.5, color: '#7dff9a' });
+  saveGame(world); // progress persists immediately, not just on autosave
+  if (world.onMissionComplete) world.onMissionComplete(m);
+  const next = world.missionIndex + 1;
+  if (next >= MISSIONS.length) {
+    world.mission = null;
+    world.freeRoam = true;
+  } else {
+    startMission(world, next);
+  }
+}
+
+// Interact key: mission-3 car entry, or exit the car.
+function interact(world) {
+  const p = world.player;
+  const m = world.mission;
+  if (p.driving) { exitCar(world); return true; }
+  if (m && m.type === 'drive' && m.phase === 1) {
+    const car = world.cars.find((c) => c.mission);
+    if (car && !car.taken && Math.hypot(p.x - car.x, p.y - car.y) < 1.8) {
+      if (enterCar(world, car)) {
+        world.drivenCar = car;
+        m.phase = 2;
+        if (world.onCarEnter) world.onCarEnter(car);
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+
+// ---- save.js ----
+// Save / load via localStorage. Pure except for the localStorage global,
+// which tests mock before importing.
+
+
+function saveGame(world) {
+  try {
+    const data = {
+      missionIndex: world.mission ? world.missionIndex : MISSIONS.length,
+      cash: world.cash,
+      kills: world.kills,
+      bestWanted: world.bestWanted,
+      missionsDone: world.missionsDone,
+    };
+    globalThis.localStorage.setItem(SAVE_KEY, JSON.stringify(data));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function loadGame() {
+  try {
+    const raw = globalThis.localStorage.getItem(SAVE_KEY);
+    if (!raw) return null;
+    const data = JSON.parse(raw);
+    if (typeof data !== 'object' || data === null) return null;
+    return data;
+  } catch {
+    return null;
+  }
+}
+
+function clearSave() {
+  try { globalThis.localStorage.removeItem(SAVE_KEY); } catch { /* ignore */ }
+}
+
+
+// ---- world.js ----
+// World: owns all game state and the per-frame update. Pure logic, no DOM.
+// main.js (browser) owns rendering/input/audio; tests drive createWorld +
+// world.update() directly.
+
+
+function createWorld(seed, opts) {
+  const map = generateMap(seed ?? CFG.MAP_SEED);
+  const world = {
+    map,
+    rng: mulberry32(seed ?? CFG.MAP_SEED),
+    player: createPlayer(map),
+    enemies: [],
+    pickups: map.pickups.map((p) => ({ ...p })),
+    cars: map.cars.map((c) => ({ ...c })),
+    drivenCar: null,
+    missionIndex: 0,
+    mission: null,
+    freeRoam: false,
+    wanted: 0,
+    wantedFloat: 0,
+    bestWanted: 0,
+    lastCrimeT: -100,
+    wantedDecay: 0,
+    policeSpawnT: 0,
+    gangSpawnT: 0,
+    cash: 0,
+    kills: 0,
+    deaths: 0,
+    missionsDone: 0,
+    missionFails: 0,
+    shotsFired: 0,
+    shotsHit: 0,
+    time: 0,
+    state: 'title', // title | playing | paused | dead
+    floaters: [],
+    // Sound/event hooks (wired by main.js; null in tests).
+    onShot: null, onPickup: null, onEnemyShot: null,
+    onMissionStart: null, onMissionComplete: null, onMissionFail: null,
+    onWave: null, onCarEnter: null,
+    saveT: 0,
+  };
+  if (opts && opts.skipIntro) world.state = 'playing';
+  return world;
+}
+
+function startGame(world, useSave) {
+  if (useSave) {
+    const s = loadGame();
+    if (s) {
+      world.missionIndex = Math.min(s.missionIndex || 0, MISSIONS.length - 1);
+      world.cash = s.cash || 0;
+      world.kills = s.kills || 0;
+      world.bestWanted = s.bestWanted || 0;
+    }
+  }
+  world.state = 'playing';
+  world._deathSaved = false;
+  startMission(world, world.missionIndex);
+}
+
+function update(world, dt, input) {
+  if (world.state !== 'playing') return;
+  world.time += dt;
+  if (input && input.interactPressed) interact(world);
+  updatePlayer(world, dt, input || {});
+  updateEnemies(world, dt);
+  updateWanted(world, dt);
+  updateMissions(world, dt);
+
+  // Keep the driven car glued to the player while driving.
+  if (world.drivenCar) {
+    world.drivenCar.x = world.player.x;
+    world.drivenCar.y = world.player.y;
+  }
+
+  // Floater lifetimes.
+  for (const f of world.floaters) f.t -= dt;
+  world.floaters = world.floaters.filter((f) => f.t > 0);
+
+  // Autosave every 15s while playing.
+  world.saveT += dt;
+  if (world.saveT > 15) {
+    world.saveT = 0;
+    saveGame(world);
+  }
+}
+
+function objectiveText(world) {
+  const m = world.mission;
+  if (!m) return world.freeRoam ? 'King of the Harbor — free roam. Cause trouble, or don\'t.' : '';
+  let text = m.brief;
+  if (m.type === 'kill') text += `  (${Math.min(m.kills || 0, m.count)}/${m.count})`;
+  if (m.type === 'waves') text += `  (wave ${Math.max(1, m.wave)}/${m.waves})`;
+  if (m.type === 'timed') text += `  (${Math.max(0, Math.ceil(m.timer))}s left)`;
+  if (m.type === 'drive') text += m.phase === 1 ? '  (find the red sedan)' : '  (drive to the Chop Shop)';
+  return text;
+}
+
+function markerDistance(world) {
+  const m = world.mission;
+  if (!m) return null;
+  const p = world.player;
+  return Math.hypot(p.x - m.marker.x, p.y - m.marker.y);
+}
+
+// Debug/test helpers.
+function teleport(world, x, y, yaw) {
+  world.player.x = x;
+  world.player.y = y;
+  if (yaw !== undefined) world.player.yaw = yaw;
+  if (world.player.driving) world.player.carYaw = yaw ?? world.player.yaw;
+}
+
+function giveAmmo(world) {
+  world.player.weapons.PISTOL.reserve += 120;
+  world.player.weapons.SHOTGUN.owned = true;
+  world.player.weapons.SHOTGUN.ammo = CFG.SHOTGUN.mag;
+  world.player.weapons.SHOTGUN.reserve += 60;
+}
+
+
+// ---- textures.js ----
+// Procedural textures — every pixel generated in code, zero network.
+// Wall/floor textures are 64x64; sprites are small canvases converted to
+// Uint32 pixel arrays (ABGR, matching ImageData on little-endian).
+// Browser-only (uses document/canvas); never imported by Node tests.
+
+
+function makeCanvas(w, h) {
+  const c = document.createElement('canvas');
+  c.width = w; c.height = h;
+  return c;
+}
+
+function toPixels(canvas) {
+  const ctx = canvas.getContext('2d');
+  const img = ctx.getImageData(0, 0, canvas.width, canvas.height);
+  return { data: new Uint32Array(img.data.buffer), w: canvas.width, h: canvas.height };
+}
+
+function speckle(ctx, rng, w, h, n, colors, alpha) {
+  for (let i = 0; i < n; i++) {
+    ctx.fillStyle = colors[Math.floor(rng() * colors.length)];
+    ctx.globalAlpha = alpha * (0.4 + rng() * 0.6);
+    ctx.fillRect(Math.floor(rng() * w), Math.floor(rng() * h), 1 + Math.floor(rng() * 2), 1 + Math.floor(rng() * 2));
+  }
+  ctx.globalAlpha = 1;
+}
+
+function brickWall(rng, base, mortar, neon) {
+  const c = makeCanvas(64, 64), ctx = c.getContext('2d');
+  ctx.fillStyle = mortar; ctx.fillRect(0, 0, 64, 64);
+  const rows = 8, bh = 8, bw = 16;
+  for (let r = 0; r < rows; r++) {
+    const off = (r % 2) * bw / 2;
+    for (let x = -1; x < 5; x++) {
+      const shade = 0.85 + rng() * 0.3;
+      ctx.fillStyle = shadeColor(base, shade);
+      ctx.fillRect(x * bw + off + 1, r * bh + 1, bw - 2, bh - 2);
+    }
+  }
+  if (neon) {
+    // A neon tube sign across the wall.
+    ctx.fillStyle = neon;
+    ctx.fillRect(6, 26, 52, 3);
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(6, 27, 52, 1);
+    ctx.fillStyle = neon;
+    ctx.globalAlpha = 0.35;
+    ctx.fillRect(4, 20, 56, 15);
+    ctx.globalAlpha = 1;
+  }
+  speckle(ctx, rng, 64, 64, 160, ['#000000', '#ffffff'], 0.12);
+  return toPixels(c);
+}
+
+function concreteWall(rng) {
+  const c = makeCanvas(64, 64), ctx = c.getContext('2d');
+  ctx.fillStyle = '#5a5f66'; ctx.fillRect(0, 0, 64, 64);
+  speckle(ctx, rng, 64, 64, 420, ['#3c4046', '#767c85', '#2c2f34'], 0.35);
+  ctx.fillStyle = '#484d54';
+  for (let y = 0; y < 64; y += 16) ctx.fillRect(0, y, 64, 1);
+  ctx.fillStyle = '#6a7078';
+  ctx.fillRect(0, 0, 64, 2);
+  return toPixels(c);
+}
+
+function glassWall(rng) {
+  const c = makeCanvas(64, 64), ctx = c.getContext('2d');
+  ctx.fillStyle = '#0e1a26'; ctx.fillRect(0, 0, 64, 64);
+  for (let y = 0; y < 4; y++) {
+    for (let x = 0; x < 4; x++) {
+      const lit = rng() < 0.35;
+      ctx.fillStyle = lit ? (rng() < 0.5 ? '#ffd75e' : '#7de3ff') : '#16283a';
+      ctx.fillRect(x * 16 + 2, y * 16 + 2, 12, 12);
+      ctx.fillStyle = '#0a121c';
+      ctx.fillRect(x * 16 + 2, y * 16 + 8, 12, 2);
+    }
+  }
+  ctx.fillStyle = '#2a3644';
+  for (let i = 0; i < 4; i++) { ctx.fillRect(i * 16, 0, 1, 64); ctx.fillRect(0, i * 16, 64, 1); }
+  return toPixels(c);
+}
+
+function barWall(rng) {
+  const c = makeCanvas(64, 64), ctx = c.getContext('2d');
+  ctx.fillStyle = '#2a1a12'; ctx.fillRect(0, 0, 64, 64);
+  // Wood planks.
+  for (let y = 0; y < 64; y += 8) {
+    ctx.fillStyle = y % 16 === 0 ? '#3a2418' : '#2e1c13';
+    ctx.fillRect(0, y, 64, 7);
+  }
+  // Glowing LANTERN sign.
+  ctx.fillStyle = '#ffb52e';
+  ctx.fillRect(4, 12, 56, 14);
+  ctx.fillStyle = '#1a0e06';
+  ctx.font = 'bold 11px monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('LANTERN', 32, 23);
+  ctx.fillStyle = '#ffb52e';
+  ctx.globalAlpha = 0.3;
+  ctx.fillRect(2, 8, 60, 22);
+  ctx.globalAlpha = 1;
+  speckle(ctx, rng, 64, 64, 120, ['#000000'], 0.2);
+  return toPixels(c);
+}
+
+function chopWall(rng) {
+  const c = makeCanvas(64, 64), ctx = c.getContext('2d');
+  ctx.fillStyle = '#3a3f45'; ctx.fillRect(0, 0, 64, 64);
+  speckle(ctx, rng, 64, 64, 260, ['#22252a', '#565d66'], 0.3);
+  // Hazard stripes along the bottom.
+  for (let x = -8; x < 72; x += 16) {
+    ctx.fillStyle = '#f7c948';
+    ctx.beginPath();
+    ctx.moveTo(x, 64); ctx.lineTo(x + 8, 52); ctx.lineTo(x + 16, 52); ctx.lineTo(x + 8, 64);
+    ctx.fill();
+  }
+  ctx.fillStyle = '#f7c948';
+  ctx.fillRect(4, 10, 56, 12);
+  ctx.fillStyle = '#111111';
+  ctx.font = 'bold 9px monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('CHOP SHOP', 32, 19);
+  return toPixels(c);
+}
+
+function boundaryWall(rng) {
+  const c = makeCanvas(64, 64), ctx = c.getContext('2d');
+  ctx.fillStyle = '#23262b'; ctx.fillRect(0, 0, 64, 64);
+  speckle(ctx, rng, 64, 64, 300, ['#14161a', '#33383f'], 0.3);
+  ctx.fillStyle = '#3d434b';
+  for (let x = 0; x < 64; x += 8) ctx.fillRect(x, 0, 2, 64);
+  ctx.fillStyle = '#ff5e5e';
+  ctx.fillRect(0, 4, 64, 2);
+  return toPixels(c);
+}
+
+function roadFloor(rng) {
+  const c = makeCanvas(64, 64), ctx = c.getContext('2d');
+  ctx.fillStyle = '#17181c'; ctx.fillRect(0, 0, 64, 64);
+  speckle(ctx, rng, 64, 64, 500, ['#0c0d10', '#232529', '#2e3036'], 0.4);
+  // Faint centre dashes (they tile per cell, reading as a dotted grid).
+  ctx.fillStyle = '#8a7d3a';
+  ctx.fillRect(30, 4, 4, 14);
+  ctx.fillRect(30, 46, 4, 14);
+  return toPixels(c);
+}
+
+function walkFloor(rng) {
+  const c = makeCanvas(64, 64), ctx = c.getContext('2d');
+  ctx.fillStyle = '#3f3a35'; ctx.fillRect(0, 0, 64, 64);
+  // Brick sidewalk slabs.
+  for (let y = 0; y < 4; y++) {
+    for (let x = 0; x < 4; x++) {
+      const s = 0.9 + rng() * 0.2;
+      ctx.fillStyle = shadeColor('#4a4238', s);
+      ctx.fillRect(x * 16 + 1, y * 16 + 1, 14, 14);
+    }
+  }
+  speckle(ctx, rng, 64, 64, 200, ['#000000', '#ffffff'], 0.1);
+  return toPixels(c);
+}
+
+function plazaFloor(rng) {
+  const c = makeCanvas(64, 64), ctx = c.getContext('2d');
+  ctx.fillStyle = '#2c2f38'; ctx.fillRect(0, 0, 64, 64);
+  for (let y = 0; y < 4; y++) {
+    for (let x = 0; x < 4; x++) {
+      ctx.fillStyle = (x + y) % 2 === 0 ? '#343845' : '#2a2e39';
+      ctx.fillRect(x * 16 + 1, y * 16 + 1, 14, 14);
+    }
+  }
+  ctx.fillStyle = '#37e0c8';
+  ctx.globalAlpha = 0.5;
+  ctx.fillRect(0, 30, 64, 2);
+  ctx.globalAlpha = 1;
+  return toPixels(c);
+}
+
+function shadeColor(hex, f) {
+  const n = parseInt(hex.slice(1), 16);
+  const r = Math.min(255, Math.round(((n >> 16) & 255) * f));
+  const g = Math.min(255, Math.round(((n >> 8) & 255) * f));
+  const b = Math.min(255, Math.round((n & 255) * f));
+  return `rgb(${r},${g},${b})`;
+}
+
+// --- Sprites (billboards) ---
+function humanoid(palette) {
+  const c = makeCanvas(48, 64), ctx = c.getContext('2d');
+  // Legs
+  ctx.fillStyle = palette.pants;
+  ctx.fillRect(18, 40, 6, 22);
+  ctx.fillRect(25, 40, 6, 22);
+  ctx.fillStyle = '#111111';
+  ctx.fillRect(17, 60, 8, 3);
+  ctx.fillRect(24, 60, 8, 3);
+  // Torso (jacket)
+  ctx.fillStyle = palette.jacket;
+  ctx.fillRect(14, 22, 21, 19);
+  ctx.fillStyle = palette.shirt;
+  ctx.fillRect(21, 22, 7, 19);
+  // Arms + gun (held to the side)
+  ctx.fillStyle = palette.jacket;
+  ctx.fillRect(10, 24, 4, 16);
+  ctx.fillRect(35, 24, 4, 12);
+  ctx.fillStyle = '#1c1e22';
+  ctx.fillRect(35, 34, 10, 4);
+  ctx.fillRect(43, 34, 3, 3);
+  // Head + cap
+  ctx.fillStyle = palette.skin;
+  ctx.fillRect(19, 8, 11, 13);
+  ctx.fillStyle = palette.cap;
+  ctx.fillRect(18, 5, 13, 5);
+  ctx.fillRect(18, 9, 16, 2);
+  // Shading: darker left edge.
+  ctx.fillStyle = 'rgba(0,0,0,0.25)';
+  ctx.fillRect(14, 22, 3, 40);
+  return toPixels(c);
+}
+
+function pickupSprite(kind) {
+  const c = makeCanvas(24, 24), ctx = c.getContext('2d');
+  if (kind === 'health') {
+    ctx.fillStyle = '#f2f2f2'; ctx.fillRect(3, 3, 18, 18);
+    ctx.fillStyle = '#e33'; ctx.fillRect(10, 6, 4, 12); ctx.fillRect(6, 10, 12, 4);
+  } else if (kind === 'armor') {
+    ctx.fillStyle = '#2f6fd0';
+    ctx.beginPath(); ctx.moveTo(12, 2); ctx.lineTo(21, 6); ctx.lineTo(21, 13); ctx.lineTo(12, 22); ctx.lineTo(3, 13); ctx.lineTo(3, 6); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = '#bcd6ff'; ctx.fillRect(10, 7, 4, 9); ctx.fillRect(7, 10, 10, 3);
+  } else {
+    ctx.fillStyle = '#7a5c1e'; ctx.fillRect(3, 8, 18, 10);
+    ctx.fillStyle = '#f7c948'; ctx.fillRect(5, 5, 14, 4);
+    ctx.fillStyle = '#111'; ctx.fillRect(8, 11, 3, 4); ctx.fillRect(13, 11, 3, 4);
+  }
+  return toPixels(c);
+}
+
+function carSprite(color) {
+  const c = makeCanvas(64, 32), ctx = c.getContext('2d');
+  const body = { red: '#c22', blue: '#2456c2', taxi: '#f7c948', green: '#2a8a4a', purple: '#7a3fd0' }[color] || '#888';
+  // Body (side profile).
+  ctx.fillStyle = body;
+  ctx.beginPath();
+  ctx.moveTo(4, 26); ctx.lineTo(6, 16); ctx.lineTo(16, 12); ctx.lineTo(26, 10); ctx.lineTo(40, 10); ctx.lineTo(50, 14); ctx.lineTo(60, 18); ctx.lineTo(60, 26);
+  ctx.closePath(); ctx.fill();
+  // Windows.
+  ctx.fillStyle = '#9fd8ef';
+  ctx.fillRect(18, 13, 9, 5);
+  ctx.fillRect(29, 12, 10, 6);
+  // Wheels.
+  ctx.fillStyle = '#0c0c0c';
+  ctx.beginPath(); ctx.arc(16, 27, 5, 0, 7); ctx.arc(48, 27, 5, 0, 7); ctx.fill();
+  ctx.fillStyle = '#666';
+  ctx.beginPath(); ctx.arc(16, 27, 2, 0, 7); ctx.arc(48, 27, 2, 0, 7); ctx.fill();
+  // Headlight.
+  ctx.fillStyle = '#fff8c0';
+  ctx.fillRect(58, 19, 3, 3);
+  return toPixels(c);
+}
+
+function beaconSprite() {
+  const c = makeCanvas(16, 96), ctx = c.getContext('2d');
+  const g = ctx.createLinearGradient(0, 0, 0, 96);
+  g.addColorStop(0, 'rgba(255,215,94,0)');
+  g.addColorStop(0.5, 'rgba(255,215,94,0.55)');
+  g.addColorStop(1, 'rgba(255,215,94,0.95)');
+  ctx.fillStyle = g;
+  ctx.fillRect(5, 0, 6, 96);
+  ctx.fillStyle = '#ffd75e';
+  ctx.beginPath(); ctx.moveTo(8, 88); ctx.lineTo(15, 96); ctx.lineTo(1, 96); ctx.closePath(); ctx.fill();
+  return toPixels(c);
+}
+
+function lampSprite() {
+  const c = makeCanvas(16, 48), ctx = c.getContext('2d');
+  ctx.fillStyle = '#22242a'; ctx.fillRect(7, 8, 2, 40);
+  ctx.fillStyle = '#ffd75e'; ctx.fillRect(4, 2, 8, 6);
+  ctx.fillStyle = 'rgba(255,215,94,0.35)'; ctx.fillRect(1, 0, 14, 10);
+  return toPixels(c);
+}
+
+function buildTextures(seed) {
+  const rng = mulberry32(seed || 1337);
+  const walls = {
+    1: brickWall(rng, '#7a3b2e', '#4a2a22', null),
+    2: concreteWall(rng),
+    3: brickWall(rng, '#4a2e4a', '#2a1a2a', '#ff4fd8'),
+    4: glassWall(rng),
+    5: barWall(rng),
+    6: chopWall(rng),
+    7: boundaryWall(rng),
+  };
+  const floors = { 0: roadFloor(rng), 1: walkFloor(rng), 2: plazaFloor(rng) };
+  const sprites = {
+    gang: humanoid({ pants: '#1e1e26', jacket: '#a11f1f', shirt: '#e8e8e8', skin: '#d9a066', cap: '#5c1010' }),
+    police: humanoid({ pants: '#101c33', jacket: '#1d3a6e', shirt: '#9db8e8', skin: '#c98d5f', cap: '#12233f' }),
+    health: pickupSprite('health'),
+    armor: pickupSprite('armor'),
+    ammo: pickupSprite('ammo'),
+    carRed: carSprite('red'), carBlue: carSprite('blue'), carTaxi: carSprite('taxi'),
+    carGreen: carSprite('green'), carPurple: carSprite('purple'),
+    beacon: beaconSprite(),
+    lamp: lampSprite(),
+  };
+  return { walls, floors, sprites };
+}
+
+// Sky: vertical gradient + neon skyline silhouette (parallax, 960x135).
+function buildSky() {
+  const c = makeCanvas(960, 135), ctx = c.getContext('2d');
+  const g = ctx.createLinearGradient(0, 0, 0, 135);
+  g.addColorStop(0, '#05060f');
+  g.addColorStop(0.55, '#141033');
+  g.addColorStop(0.85, '#3a1a4a');
+  g.addColorStop(1, '#5c2350');
+  ctx.fillStyle = g; ctx.fillRect(0, 0, 960, 135);
+  // Moon.
+  ctx.fillStyle = '#f5ecd7';
+  ctx.beginPath(); ctx.arc(760, 34, 14, 0, 7); ctx.fill();
+  ctx.fillStyle = '#d8cdb2';
+  ctx.beginPath(); ctx.arc(755, 30, 3, 0, 7); ctx.arc(766, 38, 2, 0, 7); ctx.fill();
+  // Skyline silhouettes with lit windows.
+  const rng = mulberry32(99);
+  for (let x = 0; x < 960;) {
+    const w = 24 + Math.floor(rng() * 46);
+    const h = 34 + Math.floor(rng() * 62);
+    ctx.fillStyle = '#0a0a18';
+    ctx.fillRect(x, 135 - h, w, h);
+    for (let i = 0; i < w * h / 90; i++) {
+      ctx.fillStyle = rng() < 0.5 ? '#ffd75e' : '#7de3ff';
+      ctx.globalAlpha = 0.5 + rng() * 0.5;
+      ctx.fillRect(x + 3 + Math.floor(rng() * (w - 6)), 135 - h + 4 + Math.floor(rng() * (h - 8)), 2, 3);
+    }
+    ctx.globalAlpha = 1;
+    // Neon roof sign on some towers.
+    if (rng() < 0.3) {
+      ctx.fillStyle = ['#ff4fd8', '#37e0c8', '#ffd75e'][Math.floor(rng() * 3)];
+      ctx.fillRect(x + 4, 135 - h - 4, w - 8, 2);
+    }
+    x += w + 2 + Math.floor(rng() * 10);
+  }
+  // Big NEON HARBOR sign.
+  ctx.fillStyle = '#ff4fd8';
+  ctx.font = 'bold 20px monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('NEON HARBOR', 480, 30);
+  ctx.fillStyle = 'rgba(255,79,216,0.3)';
+  ctx.fillText('NEON HARBOR', 480, 33);
+  return toPixels(c);
+}
+
+
+// ---- render.js ----
+// Raycaster renderer: sky, textured walls (DDA), floor casting, billboard
+// sprites — all into an offscreen ImageData buffer, upscaled to the canvas.
+// Browser-only. Own engine: raw canvas 2D, no library.
+
+
+// Brightness LUT: lut[level][channel] for 16 shade levels.
+const SHADE_LEVELS = 16;
+const shadeLut = [];
+for (let l = 0; l < SHADE_LEVELS; l++) {
+  const row = new Uint8Array(256);
+  const br = l / (SHADE_LEVELS - 1);
+  for (let c = 0; c < 256; c++) row[c] = Math.min(255, (c * br) | 0);
+  shadeLut.push(row);
+}
+
+function shadePixel(v, level) {
+  const lut = shadeLut[level < 0 ? 0 : level >= SHADE_LEVELS ? SHADE_LEVELS - 1 : level];
+  const r = lut[v & 255], g = lut[(v >> 8) & 255], b = lut[(v >> 16) & 255];
+  return (255 << 24) | (b << 16) | (g << 8) | r;
+}
+
+function brightFor(dist, side) {
+  let b = 1.18 - dist * 0.042;
+  if (side === 1) b *= 0.68;
+  if (b < 0.16) b = 0.16;
+  if (b > 1) b = 1;
+  return Math.round(b * (SHADE_LEVELS - 1));
+}
+
+class Renderer {
+  constructor(canvas) {
+    this.canvas = canvas;
+    this.ctx = canvas.getContext('2d');
+    this.W = CFG.BUF_W;
+    this.H = CFG.BUF_H;
+    this.off = document.createElement('canvas');
+    this.off.width = this.W; this.off.height = this.H;
+    this.octx = this.off.getContext('2d');
+    this.img = this.octx.createImageData(this.W, this.H);
+    this.buf = new Uint32Array(this.img.data.buffer);
+    this.zbuf = new Float32Array(this.W);
+    this.textures = buildTextures(1337);
+    this.sky = buildSky();
+    this.colTex = new Int16Array(this.W);
+    this.colStart = new Int16Array(this.W);
+    this.colEnd = new Int16Array(this.W);
+    this.colTexX = new Int16Array(this.W);
+    this.colSide = new Int8Array(this.W);
+    this.colBright = new Int8Array(this.W);
+    // Rain drops.
+    this.rain = [];
+    for (let i = 0; i < 90; i++) {
+      this.rain.push({ x: Math.random(), y: Math.random(), s: 0.9 + Math.random() * 0.7, l: 10 + Math.random() * 14 });
+    }
+    this.vignette = null;
+    this.resize();
+  }
+
+  resize() {
+    const w = this.canvas.clientWidth || 1280;
+    const h = this.canvas.clientHeight || 720;
+    if (this.canvas.width !== w || this.canvas.height !== h) {
+      this.canvas.width = w; this.canvas.height = h;
+    }
+    // Vignette (rebuilt on resize).
+    const v = document.createElement('canvas');
+    v.width = w; v.height = h;
+    const vc = v.getContext('2d');
+    const g = vc.createRadialGradient(w / 2, h / 2, Math.min(w, h) * 0.32, w / 2, h / 2, Math.max(w, h) * 0.72);
+    g.addColorStop(0, 'rgba(0,0,0,0)');
+    g.addColorStop(1, 'rgba(2,2,10,0.55)');
+    vc.fillStyle = g;
+    vc.fillRect(0, 0, w, h);
+    this.vignette = v;
+  }
+
+  render(world, time, dt) {
+    const p = world.player;
+    const W = this.W, H = this.H, buf = this.buf;
+    const dirX = Math.cos(p.yaw), dirY = Math.sin(p.yaw);
+    const fov = (CFG.FOV_DEG * Math.PI) / 180;
+    const plane = cameraPlane(p.yaw, fov);
+    const bob = Math.sin(p.bobT) * 1.6;
+    const horizon = Math.round(H / 2 + bob - p.eyeH * 6);
+    const posZ = (0.5 + p.eyeH) * H;
+
+    // Pass 1: walls per column (DDA) — store slice geometry + zbuffer.
+    for (let x = 0; x < W; x++) {
+      const cameraX = (2 * x) / W - 1;
+      const rayX = dirX + plane.x * cameraX;
+      const rayY = dirY + plane.y * cameraX;
+      const hit = castRay(world.map, p.x, p.y, Math.atan2(rayY, rayX));
+      const dist = hit.dist;
+      this.zbuf[x] = dist;
+      const lineH = H / Math.max(0.05, dist);
+      const start = Math.round(-lineH / 2 + horizon);
+      const end = Math.round(lineH / 2 + horizon);
+      this.colStart[x] = start < 0 ? 0 : start;
+      this.colEnd[x] = end >= H ? H - 1 : end;
+      this.colTex[x] = hit.tex;
+      this.colSide[x] = hit.side;
+      let texX = Math.floor(hit.wallX * 64);
+      if (hit.side === 0 && rayX > 0) texX = 63 - texX;
+      if (hit.side === 1 && rayY < 0) texX = 63 - texX;
+      this.colTexX[x] = texX;
+      this.colBright[x] = brightFor(dist, hit.side);
+      this._lineH = this._lineH || new Float32Array(W);
+      this._lineH[x] = lineH;
+      this._drawStart = this._drawStart || new Int16Array(W);
+      this._drawStart[x] = start;
+    }
+
+    // Pass 2: fill the buffer row by row (sky / wall / floor).
+    const sky = this.sky;
+    const skyW = sky.w, skyH = sky.h;
+    const skyOff = (((p.yaw / (Math.PI * 2)) * skyW) % skyW + skyW) % skyW;
+    const skySpan = skyW * (CFG.FOV_DEG / 360); // sky slice across the screen
+    for (let y = 0; y < H; y++) {
+      const rowBase = y * W;
+      if (y < horizon) {
+        // Sky: sample the precomputed skyline with yaw parallax.
+        const sy = Math.min(skyH - 1, Math.floor((y / Math.max(1, horizon)) * skyH));
+        for (let x = 0; x < W; x++) {
+          const sx = Math.floor((skyOff + (x / W) * skySpan) % skyW);
+          buf[rowBase + x] = sky.data[sy * skyW + sx];
+        }
+      } else {
+        // Floor casting for this row.
+        const pr = y - horizon;
+        const rowDist = posZ / Math.max(1, pr);
+        const rayX0 = dirX - plane.x, rayY0 = dirY - plane.y;
+        const rayX1 = dirX + plane.x, rayY1 = dirY + plane.y;
+        const stepX = (rowDist * (rayX1 - rayX0)) / W;
+        const stepY = (rowDist * (rayY1 - rayY0)) / W;
+        let fx = p.x + rowDist * rayX0;
+        let fy = p.y + rowDist * rayY0;
+        const bright = brightFor(rowDist, 0);
+        for (let x = 0; x < W; x++) {
+          if (y >= this.colStart[x] && y <= this.colEnd[x]) {
+            // Wall texel.
+            const tex = this.textures.walls[this.colTex[x]];
+            const texY = Math.floor(((y - this._drawStart[x]) / this._lineH[x]) * 64);
+            const ty = texY < 0 ? 0 : texY > 63 ? 63 : texY;
+            buf[rowBase + x] = shadePixel(tex.data[ty * 64 + this.colTexX[x]], this.colBright[x]);
+          } else {
+            const cx = Math.floor(fx), cy = Math.floor(fy);
+            const ft = floorAt(world.map, cx + 0.5, cy + 0.5);
+            const tex = this.textures.floors[ft];
+            const tx = Math.floor((fx - cx) * 64);
+            const ty = Math.floor((fy - cy) * 64);
+            buf[rowBase + x] = shadePixel(tex.data[ty * 64 + tx], bright);
+          }
+          fx += stepX; fy += stepY;
+        }
+      }
+    }
+
+    // Pass 3: sprites (far to near), zbuffer-tested.
+    this.drawSprites(world, dirX, dirY, plane, horizon);
+
+    // Blit the buffer up to the visible canvas.
+    this.octx.putImageData(this.img, 0, 0);
+    const cw = this.canvas.width, ch = this.canvas.height;
+    this.ctx.imageSmoothingEnabled = false;
+    this.ctx.drawImage(this.off, 0, 0, cw, ch);
+
+    // Weapon, rain, vignette, damage flash.
+    this.drawWeapon(world, time);
+    this.drawRain(dt);
+    if (this.vignette) this.ctx.drawImage(this.vignette, 0, 0);
+    if (p.hurtT > 0) {
+      this.ctx.fillStyle = `rgba(200,20,20,${(p.hurtT * 0.55).toFixed(3)})`;
+      this.ctx.fillRect(0, 0, cw, ch);
+    }
+    if (p.muzzleT > 0) {
+      // Brief warm tint only — a full-strength overlay whites the frame out.
+      this.ctx.fillStyle = `rgba(255,220,120,${(p.muzzleT * 0.45).toFixed(3)})`;
+      this.ctx.fillRect(0, 0, cw, ch);
+    }
+  }
+
+  collectSprites(world) {
+    const out = [];
+    const p = world.player;
+    for (const e of world.enemies) {
+      const d2 = (e.x - p.x) ** 2 + (e.y - p.y) ** 2;
+      if (d2 > 30 * 30) continue;
+      out.push({ kind: e.type, x: e.x, y: e.y, h: 1.0, tex: e.type === 'police' ? this.textures.sprites.police : this.textures.sprites.gang, flash: e.flashT > 0, dead: e.dead });
+    }
+    for (const pk of world.pickups) {
+      if (pk.taken) continue;
+      const d2 = (pk.x - p.x) ** 2 + (pk.y - p.y) ** 2;
+      if (d2 > 20 * 20) continue;
+      out.push({ kind: 'pickup', x: pk.x, y: pk.y, h: 0.4, tex: this.textures.sprites[pk.kind], bob: true });
+    }
+    for (const car of world.cars) {
+      if (car.taken) continue;
+      const d2 = (car.x - p.x) ** 2 + (car.y - p.y) ** 2;
+      if (d2 > 26 * 26) continue;
+      const key = car.color === 'red' ? 'carRed' : car.color === 'blue' ? 'carBlue' : car.color === 'taxi' ? 'carTaxi' : car.color === 'green' ? 'carGreen' : 'carPurple';
+      out.push({ kind: 'car', x: car.x, y: car.y, h: 0.55, tex: this.textures.sprites[key] });
+    }
+    // Mission beacon.
+    const m = world.mission;
+    if (m && !m.done) {
+      out.push({ kind: 'beacon', x: m.marker.x, y: m.marker.y, h: 2.4, tex: this.textures.sprites.beacon });
+    }
+    // Street lamps at road crossings (deterministic, from the map grid).
+    const map = world.map;
+    for (let y = 1; y < map.h - 1; y += 6) {
+      for (let x = 1; x < map.w - 1; x += 6) {
+        const d2 = (x + 0.5 - p.x) ** 2 + (y + 0.5 - p.y) ** 2;
+        if (d2 > 18 * 18) continue;
+        out.push({ kind: 'lamp', x: x + 0.5, y: y + 0.5, h: 1.1, tex: this.textures.sprites.lamp });
+      }
+    }
+    return out;
+  }
+
+  drawSprites(world, dirX, dirY, plane, horizon) {
+    const W = this.W, H = this.H, buf = this.buf;
+    const p = world.player;
+    const sprites = this.collectSprites(world);
+    // Sort far to near (by squared distance).
+    sprites.sort((a, b) => {
+      const da = (a.x - p.x) ** 2 + (a.y - p.y) ** 2;
+      const db = (b.x - p.x) ** 2 + (b.y - p.y) ** 2;
+      return db - da;
+    });
+    const invDet = 1 / (plane.x * dirY - dirX * plane.y);
+    for (const s of sprites) {
+      const relX = s.x - p.x, relY = s.y - p.y;
+      const tx = invDet * (dirY * relX - dirX * relY);
+      const ty = invDet * (-plane.y * relX + plane.x * relY);
+      if (ty <= 0.15) continue;
+      const screenX = Math.floor((W / 2) * (1 + tx / ty));
+      const size = Math.abs(H / ty) * s.h;
+      if (size < 2 || size > H * 4) continue;
+      const tex = s.tex;
+      const aspect = tex.w / tex.h;
+      const wPx = Math.max(1, Math.floor(size * aspect));
+      const hPx = Math.floor(size);
+      const drawH = s.dead ? Math.max(1, Math.floor(hPx * 0.42)) : hPx;
+      // The sprite stands on the floor: its bottom sits where the floor at
+      // this depth projects (horizon + H / (2 * depth)).
+      const bottom = Math.floor(horizon + H / (2 * ty));
+      const top = bottom - drawH + (s.bob ? Math.floor(Math.sin(world.time * 3 + s.x * 5) * 3) : 0);
+      const x0 = screenX - Math.floor(wPx / 2);
+      const bright = brightFor(ty, 0);
+      for (let sx = 0; sx < wPx; sx++) {
+        const col = x0 + sx;
+        if (col < 0 || col >= W) continue;
+        if (ty >= this.zbuf[col]) continue;
+        const texX = Math.floor((sx / wPx) * tex.w);
+        for (let sy = 0; sy < drawH; sy++) {
+          const row = top + sy;
+          if (row < 0 || row >= H) continue;
+          const texY = Math.floor((sy / drawH) * tex.h);
+          const px = tex.data[texY * tex.w + texX];
+          if ((px >>> 24) < 128) continue; // transparent
+          let v = px;
+          if (s.flash) v = shadePixel(px, SHADE_LEVELS - 1);
+          else if (s.dead) v = shadePixel(px, 4);
+          else if (bright < SHADE_LEVELS - 1) v = shadePixel(px, bright);
+          buf[row * W + col] = v;
+        }
+      }
+    }
+  }
+
+  drawWeapon(world, time) {
+    const p = world.player;
+    if (world.state !== 'playing') return;
+    const cw = this.canvas.width, ch = this.canvas.height;
+    const ctx = this.ctx;
+    const bobX = Math.sin(p.bobT) * 6;
+    const bobY = Math.abs(Math.cos(p.bobT)) * 5 + (p.driving ? 26 : 0);
+    const recoil = p.muzzleT > 0 ? p.muzzleT * 260 : 0;
+    // Classic FPS viewmodel: held right of centre, slightly angled, in lighter
+    // tones so it reads against the dark street (a dead-centre dark bar read
+    // as a pole, not a gun).
+    const wx = cw / 2 + 120 + bobX;
+    const baseY = ch - 6 - bobY + recoil * 0.4;
+    ctx.save();
+    ctx.translate(wx, baseY);
+    ctx.rotate(-0.1);
+    if (p.weapon === 'SHOTGUN') {
+      // Pump shotgun: long barrel, pump, receiver, stock.
+      ctx.fillStyle = '#3a3f47';
+      ctx.fillRect(-10, -268, 20, 118); // barrel
+      ctx.fillStyle = '#6a7078';
+      ctx.fillRect(-10, -268, 20, 14); // barrel highlight
+      ctx.fillStyle = '#0c0d10';
+      ctx.fillRect(-10, -268, 20, 6); // muzzle
+      ctx.fillStyle = '#5a4026';
+      ctx.fillRect(-15, -216, 30, 34); // pump (wood)
+      ctx.fillStyle = '#3a3f47';
+      ctx.fillRect(-13, -168, 26, 74); // receiver
+      ctx.fillStyle = '#5a4026';
+      ctx.fillRect(-14, -96, 28, 66); // stock (wood)
+      ctx.fillStyle = '#c22';
+      ctx.fillRect(-2, -274, 4, 7); // front sight
+      if (p.muzzleT > 0) {
+        ctx.fillStyle = '#ffd75e';
+        ctx.beginPath();
+        ctx.moveTo(0, -302); ctx.lineTo(-24, -264); ctx.lineTo(24, -264);
+        ctx.closePath(); ctx.fill();
+        ctx.fillStyle = 'rgba(255,183,77,0.7)';
+        ctx.beginPath(); ctx.arc(0, -280, 28, 0, 7); ctx.fill();
+      }
+    } else {
+      // Pistol: wide slide with a light top edge, wood grip, trigger guard.
+      ctx.fillStyle = '#3a3f47';
+      ctx.fillRect(-13, -152, 26, 88); // slide
+      ctx.fillStyle = '#7d838e';
+      ctx.fillRect(-13, -152, 26, 10); // slide top edge (catches the light)
+      ctx.fillStyle = '#0c0d10';
+      ctx.fillRect(-13, -152, 26, 6); // muzzle
+      ctx.fillStyle = '#5a4026';
+      ctx.fillRect(-13, -66, 26, 66); // grip (wood)
+      ctx.fillStyle = '#2b2e35';
+      ctx.fillRect(-13, -66, 26, 8); // grip top
+      ctx.fillStyle = '#15161a';
+      ctx.fillRect(-5, -66, 10, 16); // trigger guard
+      ctx.fillStyle = '#37e0c8';
+      ctx.fillRect(-2, -160, 4, 8); // neon front sight
+      if (p.muzzleT > 0) {
+        ctx.fillStyle = '#ffd75e';
+        ctx.beginPath();
+        ctx.moveTo(0, -184); ctx.lineTo(-17, -150); ctx.lineTo(17, -150);
+        ctx.closePath(); ctx.fill();
+        ctx.fillStyle = 'rgba(255,183,77,0.7)';
+        ctx.beginPath(); ctx.arc(0, -164, 19, 0, 7); ctx.fill();
+      }
+    }
+    ctx.restore();
+    // Reload indicator.
+    if (p.reloadT > 0) {
+      ctx.fillStyle = 'rgba(255,215,94,0.9)';
+      ctx.font = 'bold 15px monospace';
+      ctx.textAlign = 'center';
+      ctx.fillText('RELOADING…', cw / 2, ch - 190);
+    }
+  }
+
+  drawRain(dt) {
+    const cw = this.canvas.width, ch = this.canvas.height;
+    const ctx = this.ctx;
+    ctx.strokeStyle = 'rgba(160,190,255,0.28)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    for (const d of this.rain) {
+      d.y += d.s * dt * 1.4;
+      d.x += d.s * dt * 0.12;
+      if (d.y > 1.05) { d.y = -0.05; d.x = Math.random(); }
+      if (d.x > 1.05) d.x = -0.05;
+      const x = d.x * cw, y = d.y * ch;
+      ctx.moveTo(x, y);
+      ctx.lineTo(x - d.l * 0.18, y + d.l);
+    }
+    ctx.stroke();
+  }
+}
+
+
+// ---- audio.js ----
+// Synthesized sound — WebAudio only, no audio files, no network.
+// Browser-only. All sounds are built from oscillators and filtered noise.
+
+class SoundBank {
+  constructor() {
+    this.ctx = null;
+    this.master = null;
+    this.muted = false;
+    this.sirenNodes = null;
+    this.rainNodes = null;
+  }
+
+  ensure() {
+    if (this.ctx) {
+      if (this.ctx.state === 'suspended') this.ctx.resume();
+      return true;
+    }
+    try {
+      const AC = window.AudioContext || window.webkitAudioContext;
+      this.ctx = new AC();
+      this.master = this.ctx.createGain();
+      this.master.gain.value = 0.5;
+      this.master.connect(this.ctx.destination);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  setMuted(m) {
+    this.muted = m;
+    if (this.master) this.master.gain.value = m ? 0 : 0.5;
+  }
+
+  tone(freq, dur, type, vol, slideTo) {
+    if (!this.ctx || this.muted) return;
+    const t = this.ctx.currentTime;
+    const o = this.ctx.createOscillator();
+    const g = this.ctx.createGain();
+    o.type = type || 'square';
+    o.frequency.setValueAtTime(freq, t);
+    if (slideTo) o.frequency.exponentialRampToValueAtTime(Math.max(1, slideTo), t + dur);
+    g.gain.setValueAtTime(vol || 0.2, t);
+    g.gain.exponentialRampToValueAtTime(0.001, t + dur);
+    o.connect(g); g.connect(this.master);
+    o.start(t); o.stop(t + dur + 0.02);
+  }
+
+  noise(dur, vol, filterFreq, type) {
+    if (!this.ctx || this.muted) return;
+    const t = this.ctx.currentTime;
+    const len = Math.max(1, Math.floor(this.ctx.sampleRate * dur));
+    const buf = this.ctx.createBuffer(1, len, this.ctx.sampleRate);
+    const data = buf.getChannelData(0);
+    for (let i = 0; i < len; i++) data[i] = (Math.random() * 2 - 1) * (1 - i / len);
+    const src = this.ctx.createBufferSource();
+    src.buffer = buf;
+    const f = this.ctx.createBiquadFilter();
+    f.type = type || 'lowpass';
+    f.frequency.value = filterFreq || 1200;
+    const g = this.ctx.createGain();
+    g.gain.setValueAtTime(vol || 0.3, t);
+    g.gain.exponentialRampToValueAtTime(0.001, t + dur);
+    src.connect(f); f.connect(g); g.connect(this.master);
+    src.start(t);
+  }
+
+  shoot() { this.noise(0.12, 0.5, 2400); this.tone(190, 0.09, 'square', 0.22, 60); }
+  shotgun() { this.noise(0.3, 0.7, 900); this.tone(120, 0.22, 'sawtooth', 0.3, 40); }
+  enemyShot() { this.noise(0.1, 0.2, 1600); }
+  hit() { this.tone(1200, 0.05, 'square', 0.14); }
+  kill() { this.tone(520, 0.09, 'square', 0.16, 780); }
+  pickup() { this.tone(660, 0.07, 'sine', 0.2); this.tone(990, 0.1, 'sine', 0.2); }
+  reload() { this.tone(300, 0.05, 'square', 0.12); this.tone(420, 0.05, 'square', 0.12); }
+  mission() {
+    [523, 659, 784, 1046].forEach((f, i) => {
+      setTimeout(() => this.tone(f, 0.16, 'triangle', 0.22), i * 95);
+    });
+  }
+  fail() { this.tone(220, 0.3, 'sawtooth', 0.18, 110); }
+  click() { this.tone(800, 0.04, 'square', 0.1); }
+
+  // Police siren: two alternating tones while wanted >= 3.
+  setSiren(on) {
+    if (!this.ctx) return;
+    if (on && !this.sirenNodes) {
+      const o = this.ctx.createOscillator();
+      const g = this.ctx.createGain();
+      const lfo = this.ctx.createOscillator();
+      const lg = this.ctx.createGain();
+      o.type = 'sine'; o.frequency.value = 750;
+      lfo.type = 'square'; lfo.frequency.value = 0.55;
+      lg.gain.value = 180;
+      lfo.connect(lg); lg.connect(o.frequency);
+      g.gain.value = this.muted ? 0 : 0.045;
+      o.connect(g); g.connect(this.master);
+      o.start(); lfo.start();
+      this.sirenNodes = { o, lfo, g };
+    } else if (!on && this.sirenNodes) {
+      try { this.sirenNodes.o.stop(); this.sirenNodes.lfo.stop(); } catch { /* already stopped */ }
+      this.sirenNodes = null;
+    }
+  }
+
+  // Rain ambience: looping filtered noise, quiet.
+  setRain(on) {
+    if (!this.ctx) return;
+    if (on && !this.rainNodes) {
+      const len = this.ctx.sampleRate * 2;
+      const buf = this.ctx.createBuffer(1, len, this.ctx.sampleRate);
+      const data = buf.getChannelData(0);
+      for (let i = 0; i < len; i++) data[i] = Math.random() * 2 - 1;
+      const src = this.ctx.createBufferSource();
+      src.buffer = buf; src.loop = true;
+      const f = this.ctx.createBiquadFilter();
+      f.type = 'bandpass'; f.frequency.value = 1400; f.Q.value = 0.6;
+      const g = this.ctx.createGain();
+      g.gain.value = this.muted ? 0 : 0.035;
+      src.connect(f); f.connect(g); g.connect(this.master);
+      src.start();
+      this.rainNodes = { src, g };
+    } else if (!on && this.rainNodes) {
+      try { this.rainNodes.src.stop(); } catch { /* already stopped */ }
+      this.rainNodes = null;
+    }
+  }
+}
+
+
+// ---- input.js ----
+// Keyboard + mouse + pointer lock input. Browser-only.
+// Produces the plain input object world.update() consumes:
+// {f,b,l,r,sprint,jump,fire,reload,interact,w1,w2,yawDelta,interactPressed}
+
+class Input {
+  constructor(canvas) {
+    this.canvas = canvas;
+    this.keys = new Set();
+    this.pressed = new Set(); // edge-triggered, cleared by endStep()
+    this.yawDelta = 0;
+    this.mouseDown = false;
+    this.locked = false;
+    this.onFirstGesture = null;
+    this.onLockChange = null;
+    this._onKeyDown = (e) => {
+      if (['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.code)) e.preventDefault();
+      if (!e.repeat) this.pressed.add(e.code);
+      this.keys.add(e.code);
+      if (this.onFirstGesture) this.onFirstGesture();
+    };
+    this._onKeyUp = (e) => this.keys.delete(e.code);
+    this._onMouseMove = (e) => {
+      if (this.locked) this.yawDelta += e.movementX * 0.0023;
+    };
+    this._onMouseDown = (e) => {
+      if (e.button === 0) {
+        this.mouseDown = true;
+        if (this.onFirstGesture) this.onFirstGesture();
+      }
+    };
+    this._onMouseUp = (e) => { if (e.button === 0) this.mouseDown = false; };
+    this._onLock = () => {
+      this.locked = document.pointerLockElement === this.canvas;
+      if (this.onLockChange) this.onLockChange(this.locked);
+    };
+    window.addEventListener('keydown', this._onKeyDown);
+    window.addEventListener('keyup', this._onKeyUp);
+    document.addEventListener('mousemove', this._onMouseMove);
+    document.addEventListener('mousedown', this._onMouseDown);
+    document.addEventListener('mouseup', this._onMouseUp);
+    document.addEventListener('pointerlockchange', this._onLock);
+  }
+
+  requestLock() {
+    try {
+      const p = this.canvas.requestPointerLock();
+      if (p && p.catch) p.catch(() => { /* headless or denied: mouse look via API */ });
+    } catch { /* ignore */ }
+  }
+
+  exitLock() {
+    try { if (document.pointerLockElement) document.exitPointerLock(); } catch { /* ignore */ }
+  }
+
+  held(code) { return this.keys.has(code); }
+
+  wasPressed(code) { return this.pressed.has(code); }
+
+  // Build the per-frame input object for world.update().
+  read() {
+    const o = {
+      f: this.held('KeyW') || this.held('ArrowUp'),
+      b: this.held('KeyS') || this.held('ArrowDown'),
+      l: this.held('KeyA') || this.held('ArrowLeft'),
+      r: this.held('KeyD') || this.held('ArrowRight'),
+      sprint: this.held('ShiftLeft') || this.held('ShiftRight'),
+      jump: this.held('Space'),
+      fire: this.mouseDown,
+      reload: this.wasPressed('KeyR'),
+      interact: this.wasPressed('KeyE'),
+      interactPressed: this.wasPressed('KeyE'),
+      w1: this.wasPressed('Digit1'),
+      w2: this.wasPressed('Digit2'),
+      yawDelta: this.yawDelta,
+    };
+    return o;
+  }
+
+  endStep() {
+    this.pressed.clear();
+    this.yawDelta = 0;
+  }
+
+  destroy() {
+    window.removeEventListener('keydown', this._onKeyDown);
+    window.removeEventListener('keyup', this._onKeyUp);
+    document.removeEventListener('mousemove', this._onMouseMove);
+    document.removeEventListener('mousedown', this._onMouseDown);
+    document.removeEventListener('mouseup', this._onMouseUp);
+    document.removeEventListener('pointerlockchange', this._onLock);
+  }
+}
+
+
+// ---- ui.js ----
+// HUD, minimap and screens (title / pause / dead). Browser-only (DOM).
+// The 3D view is the renderer's canvas; this module owns everything around it.
+
+
+class UI {
+  constructor(world) {
+    this.world = world;
+    this.el = {};
+    for (const id of ['hud', 'health-fill', 'health-text', 'armor-fill', 'armor-text', 'ammo', 'weapon', 'cash', 'stars', 'objective', 'mission-label', 'banner', 'banner-title', 'banner-sub', 'crosshair', 'minimap', 'title', 'pause', 'dead', 'dead-stats', 'fps', 'hint', 'speed', 'interact']) {
+      this.el[id] = document.getElementById(id);
+    }
+    this.mapCanvas = this.el.minimap;
+    this.mapCtx = this.mapCanvas ? this.mapCanvas.getContext('2d') : null;
+    this.frame = 0;
+    this.bannerT = 0;
+  }
+
+  update(fps) {
+    const w = this.world, p = w.player;
+    this.frame += 1;
+    if (this.el['health-fill']) this.el['health-fill'].style.width = `${Math.max(0, p.hp)}%`;
+    if (this.el['health-text']) this.el['health-text'].textContent = `${Math.ceil(p.hp)}`;
+    if (this.el['armor-fill']) this.el['armor-fill'].style.width = `${Math.max(0, p.armor)}%`;
+    if (this.el['armor-text']) this.el['armor-text'].textContent = `${Math.ceil(p.armor)}`;
+    const slot = p.weapons[p.weapon];
+    if (this.el.ammo) this.el.ammo.textContent = p.reloadT > 0 ? '--' : `${slot.ammo} / ${slot.reserve}`;
+    if (this.el.weapon) this.el.weapon.textContent = p.weapon === 'PISTOL' ? 'PISTOL' : 'SHOTGUN';
+    if (this.el.cash) this.el.cash.textContent = `$${w.cash}`;
+    const stars = wantedStars(w);
+    if (this.el.stars) {
+      this.el.stars.textContent = '★'.repeat(stars) + '☆'.repeat(5 - stars);
+      this.el.stars.style.color = stars >= 4 ? '#ff4040' : stars >= 2 ? '#ffb52e' : '#8a93a6';
+    }
+    if (this.el.objective) this.el.objective.textContent = objectiveText(w);
+    const d = markerDistance(w);
+    if (this.el['mission-label']) {
+      const m = w.mission;
+      this.el['mission-label'].textContent = m ? `MISSION ${m.id}/5 — ${m.name}${d !== null ? `  ·  ${Math.round(d)}m` : ''}` : (w.freeRoam ? 'FREE ROAM' : '');
+    }
+    if (this.el.fps) this.el.fps.textContent = `${fps} fps`;
+    if (this.el.speed) this.el.speed.textContent = p.driving ? `${Math.abs(p.carSpeed * 3.6 * 2.2).toFixed(0)} km/h` : '';
+    // Interact prompt (mission car nearby).
+    if (this.el.interact) {
+      const m = w.mission;
+      let show = false;
+      if (m && m.type === 'drive' && m.phase === 1 && !p.driving) {
+        const car = w.cars.find((c) => c.mission);
+        if (car && !car.taken && Math.hypot(p.x - car.x, p.y - car.y) < 1.8) show = true;
+      }
+      if (p.driving) show = true; // E exits the car
+      this.el.interact.style.display = show ? 'block' : 'none';
+      if (show) this.el.interact.textContent = p.driving ? '[E] Exit car' : '[E] Steal the car';
+    }
+    // Banner countdown.
+    if (this.bannerT > 0) {
+      this.bannerT -= 1 / 60;
+      if (this.bannerT <= 0 && this.el.banner) this.el.banner.style.display = 'none';
+    }
+    // Minimap at ~10 Hz.
+    if (this.frame % 6 === 0) this.drawMinimap();
+  }
+
+  banner(title, sub, seconds) {
+    if (!this.el.banner) return;
+    this.el['banner-title'].textContent = title;
+    this.el['banner-sub'].textContent = sub || '';
+    this.el.banner.style.display = 'block';
+    this.bannerT = seconds || 3;
+  }
+
+  showTitle(show, hasSave) {
+    if (!this.el.title) return;
+    this.el.title.style.display = show ? 'flex' : 'none';
+    const cont = document.getElementById('continue-btn');
+    if (cont) cont.style.display = hasSave ? 'inline-block' : 'none';
+  }
+
+  showPause(show) {
+    if (this.el.pause) this.el.pause.style.display = show ? 'flex' : 'none';
+  }
+
+  showDead(show, stats) {
+    if (!this.el.dead) return;
+    this.el.dead.style.display = show ? 'flex' : 'none';
+    if (show && this.el['dead-stats']) this.el['dead-stats'].textContent = stats || '';
+  }
+
+  drawMinimap() {
+    const ctx = this.mapCtx;
+    if (!ctx) return;
+    const map = this.world.map;
+    const S = this.mapCanvas.width;
+    const cw = S / map.w, ch = S / map.h;
+    ctx.clearRect(0, 0, S, S);
+    for (let y = 0; y < map.h; y++) {
+      for (let x = 0; x < map.w; x++) {
+        const t = map.grid[y * map.w + x];
+        if (t === TILE.OPEN) continue;
+        ctx.fillStyle = t === TILE.BAR ? '#8a6a1e' : t === TILE.CHOP ? '#8a7d1e' : '#23262e';
+        ctx.fillRect(x * cw, y * ch, cw + 0.5, ch + 0.5);
+      }
+    }
+    // Mission marker (pulsing).
+    const m = this.world.mission;
+    if (m) {
+      const pulse = 3 + Math.sin(this.world.time * 5) * 1.5;
+      ctx.fillStyle = '#ffd75e';
+      ctx.beginPath();
+      ctx.arc(m.marker.x * cw, m.marker.y * ch, pulse, 0, 7);
+      ctx.fill();
+    }
+    // Parked cars.
+    ctx.fillStyle = '#cfd6e4';
+    for (const car of this.world.cars) {
+      if (car.taken) continue;
+      ctx.fillRect(car.x * cw - 1.5, car.y * ch - 1.5, 3, 3);
+    }
+    // Enemies.
+    for (const e of this.world.enemies) {
+      if (e.dead) continue;
+      ctx.fillStyle = e.type === 'police' ? '#4f8cff' : '#ff4f4f';
+      ctx.fillRect(e.x * cw - 1.5, e.y * ch - 1.5, 3, 3);
+    }
+    // Player arrow.
+    const p = this.world.player;
+    ctx.save();
+    ctx.translate(p.x * cw, p.y * ch);
+    ctx.rotate(p.yaw);
+    ctx.fillStyle = '#37e0c8';
+    ctx.beginPath();
+    ctx.moveTo(5, 0); ctx.lineTo(-3.5, -3.2); ctx.lineTo(-3.5, 3.2);
+    ctx.closePath(); ctx.fill();
+    ctx.restore();
+  }
+}
+
+
+// ---- main.js ----
+// NEONHARBOR 3D — entry point. Wires world + renderer + input + sound + UI,
+// runs the frame loop, and exposes window.__nh3d for the playtest driver
+// and the deterministic ?shot= screenshot mode.
+
+
+const params = new URLSearchParams(location.search);
+const SHOT = params.get('shot');
+const SEED = Number(params.get('seed') || '1');
+
+const canvas = document.getElementById('game');
+const world = createWorld(CFG.MAP_SEED);
+const renderer = new Renderer(canvas);
+const input = new Input(canvas);
+const sound = new SoundBank();
+const ui = new UI(world);
+
+let fps = 60, frames = 0, fpsT = 0;
+let last = performance.now();
+let shotFrames = 0;
+
+// --- Sound / event hooks ---
+world.onShot = (weapon, hits) => {
+  if (weapon === 'SHOTGUN') sound.shotgun(); else sound.shoot();
+  if (hits > 0) sound.hit();
+};
+world.onPickup = () => sound.pickup();
+world.onEnemyShot = (e, hit) => { sound.enemyShot(); };
+world.onMissionComplete = (m) => {
+  sound.mission();
+  ui.banner('MISSION COMPLETE', `${m.name}  ·  +$${m.reward}`, 3);
+  if (world.mission) ui.banner('MISSION COMPLETE', `${m.name}  ·  +$${m.reward} — next: ${world.mission.name}`, 3);
+};
+world.onMissionFail = (m) => { sound.fail(); ui.banner('TIME UP', `${m.name} — try again, the clock restarted`, 2.5); };
+world.onMissionStart = (m) => ui.banner(`MISSION ${m.id}/5 — ${m.name}`, m.brief, 3.5);
+world.onWave = (n) => ui.banner(`WAVE ${n}`, 'They keep coming…', 2);
+world.onCarEnter = () => { sound.pickup(); ui.banner('HOT WHEELS', 'Drive it to the Chop Shop — watch the heat', 3); };
+
+// --- Title / pause / dead flow ---
+function play(useSave) {
+  sound.ensure();
+  sound.setRain(true);
+  startGame(world, useSave);
+  ui.showTitle(false);
+  ui.showDead(false);
+  ui.showPause(false);
+  input.requestLock();
+}
+
+const newBtn = document.getElementById('new-btn');
+if (newBtn) newBtn.addEventListener('click', () => play(false));
+const contBtn = document.getElementById('continue-btn');
+if (contBtn) contBtn.addEventListener('click', () => play(true));
+const resumeBtn = document.getElementById('resume-btn');
+if (resumeBtn) resumeBtn.addEventListener('click', () => {
+  world.state = 'playing';
+  ui.showPause(false);
+  input.requestLock();
+});
+const restartBtn = document.getElementById('restart-btn');
+if (restartBtn) restartBtn.addEventListener('click', () => location.reload());
+const muteBtn = document.getElementById('mute-btn');
+if (muteBtn) muteBtn.addEventListener('click', () => {
+  sound.setMuted(!sound.muted);
+  muteBtn.textContent = sound.muted ? 'SOUND: OFF' : 'SOUND: ON';
+});
+
+input.onFirstGesture = () => sound.ensure();
+input.onLockChange = (locked) => {
+  if (!locked && world.state === 'playing' && !SHOT) {
+    world.state = 'paused';
+    ui.showPause(true);
+  }
+};
+window.addEventListener('keydown', (e) => {
+  if (e.code === 'KeyM') {
+    sound.setMuted(!sound.muted);
+    if (muteBtn) muteBtn.textContent = sound.muted ? 'SOUND: OFF' : 'SOUND: ON';
+  }
+  if (e.code === 'Escape' && world.state === 'paused') {
+    world.state = 'playing';
+    ui.showPause(false);
+    input.requestLock();
+  }
+});
+window.addEventListener('resize', () => renderer.resize());
+
+// --- Deterministic screenshot scenes (?shot=start|combat|mission|hud) ---
+function setupShot(kind) {
+  world.state = 'playing';
+  ui.showTitle(false);
+  const p = world.player;
+  if (kind === 'start') {
+    teleport(world, 1.5, 6.5, 0);
+    spawnEnemy(world, 'gang', 8.5, 6.5).yaw = Math.PI;
+    spawnEnemy(world, 'gang', 12.5, 6.5).yaw = Math.PI;
+    startMission(world, 0);
+  } else if (kind === 'combat') {
+    teleport(world, 13.5, 13.5, Math.PI);
+    p.hp = 78;
+    p.weapons.PISTOL.ammo = 9;
+    world.wanted = 2;
+    world.cash = 150;
+    spawnEnemy(world, 'gang', 10.5, 13.5).yaw = 0;
+    spawnEnemy(world, 'gang', 11.5, 12.5).yaw = 0;
+    spawnEnemy(world, 'gang', 9.5, 14.5).yaw = 0;
+    startMission(world, 1);
+    world.mission.kills = 2;
+  } else if (kind === 'mission') {
+    // Stand on the road row facing east down the street: the bar and the
+    // yellow beacon are straight ahead.
+    teleport(world, 7.5, 7.5, 0);
+    startMission(world, 0);
+  } else if (kind === 'hud') {
+    // Driving shot: in the car, 3 stars, cash, mission 3 in progress.
+    teleport(world, 1.5, 12.5, 0);
+    p.hp = 85; p.armor = 40;
+    p.weapons.PISTOL.ammo = 11;
+    giveAmmo(world);
+    world.cash = 450;
+    world.wanted = 3;
+    startMission(world, 2);
+    const car = world.cars.find((c) => c.mission);
+    world.mission.phase = 2;
+    p.driving = true;
+    p.carYaw = 0;
+    p.carSpeed = 6;
+    car.taken = true;
+    world.drivenCar = car;
+    spawnEnemy(world, 'police', 7.5, 12.5).yaw = Math.PI;
+    spawnEnemy(world, 'police', 10.5, 13.5).yaw = Math.PI;
+  }
+  // A few warm-up frames are rendered by the main loop before __shotReady.
+}
+
+if (SHOT) {
+  setupShot(SHOT);
+  window.__shotReady = false;
+} else {
+  ui.showTitle(true, !!loadGame());
+}
+
+// --- Debug / playtest API ---
+window.__nh3d = {
+  world,
+  ready: true,
+  fps: () => fps,
+  state: () => ({
+    state: world.state,
+    x: world.player.x, y: world.player.y, yaw: world.player.yaw,
+    hp: world.player.hp, armor: world.player.armor,
+    cash: world.cash, wanted: world.wanted,
+    mission: world.mission ? world.mission.id : null,
+    missionName: world.mission ? world.mission.name : null,
+    enemies: world.enemies.filter((e) => !e.dead).length,
+    kills: world.kills, missionsDone: world.missionsDone,
+    driving: world.player.driving,
+    ammo: world.player.weapons[world.player.weapon].ammo,
+  }),
+  start: (useSave) => play(useSave),
+  teleport: (x, y, yaw) => teleport(world, x, y, yaw),
+  setYaw: (a) => { world.player.yaw = a; if (world.player.driving) world.player.carYaw = a; },
+  fire: () => { world.player.fireT = 0; },
+  giveAmmo: () => giveAmmo(world),
+  setMission: (i) => startMission(world, i),
+  spawnEnemy: (type, x, y) => spawnEnemy(world, type, x, y),
+  setWanted: (n) => { world.wanted = n; },
+  heal: () => { world.player.hp = 100; world.player.armor = 100; },
+};
+
+// --- Main loop ---
+function frame(now) {
+  const dt = Math.min(0.05, Math.max(0.001, (now - last) / 1000));
+  last = now;
+  // Exponential moving average so the counter reads sensibly within the
+  // first second (and the screenshots never show "0 fps").
+  fps = Math.round(fps * 0.9 + (1 / dt) * 0.1);
+  frames += 1; fpsT += dt;
+
+  if (world.state === 'playing') {
+    const inp = input.read();
+    update(world, dt, inp);
+    input.endStep();
+    // Siren + rain follow the wanted level.
+    sound.setSiren(world.wanted >= 3 && world.state === 'playing');
+  } else if (world.state === 'dead') {
+    if (!world._deathSaved) { world._deathSaved = true; saveGame(world); }
+    ui.showDead(true, `Missions done: ${world.missionsDone}  ·  Cash: $${world.cash}  ·  Kills: ${world.kills}`);
+  }
+  renderer.render(world, now / 1000, dt);
+  ui.update(fps);
+
+  if (SHOT) {
+    shotFrames += 1;
+    if (shotFrames === 10 && SHOT === 'combat') {
+      // Hold a muzzle flash for the capture.
+      world.player.muzzleT = 0.5;
+      world.player.fireT = 0.2;
+    }
+    if (shotFrames >= 14) window.__shotReady = true;
+  }
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+
+
+</script>
+</body>
+</html>
